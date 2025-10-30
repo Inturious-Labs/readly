@@ -23,6 +23,14 @@ build/
 *.swo
 *~
 .DS_Store
+Thumbs.db
+
+# Output files
+*.html
+*.epub
+output/*.md
+output/
+articles/
 
 # Python
 __pycache__/
@@ -30,9 +38,26 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 venv/
 ENV/
 env/
+env.bak/
+venv.bak/
 
 # Testing
 coverage/
@@ -42,3 +67,5 @@ coverage/
 # Temporary files
 *.tmp
 .cache/
+tmp/
+temp/
