@@ -1,0 +1,13 @@
+[Unit]
+Description=Readly API
+After=network.target
+
+[Service]
+User=clayton
+WorkingDirectory=/home/clayton/readly/backend
+ExecStart=/home/clayton/readly/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

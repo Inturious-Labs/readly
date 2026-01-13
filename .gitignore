@@ -26,8 +26,8 @@ build/
 Thumbs.db
 
 # Output files
-*.html
-*.epub
+output/*.html
+output/*.epub
 output/*.md
 output/
 articles/
