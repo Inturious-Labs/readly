@@ -2,12 +2,15 @@
 Web page converter - scrapes URLs and generates PDF/EPUB.
 """
 
+import base64
+import hashlib
 import os
 import re
 import tempfile
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
+import httpx
 from bs4 import BeautifulSoup
 from ebooklib import epub
 from playwright.async_api import async_playwright
@@ -69,8 +72,38 @@ class WebConverter:
             # Use domcontentloaded instead of networkidle (faster, more reliable)
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-            # Wait for content to render
+            # Wait for initial content to render
+            await page.wait_for_timeout(2000)
+
+            # Scroll down to trigger lazy-loading of images
+            await page.evaluate("""
+                async () => {
+                    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+                    for (let i = 0; i < document.body.scrollHeight; i += 300) {
+                        window.scrollTo(0, i);
+                        await delay(100);
+                    }
+                    window.scrollTo(0, 0);
+                }
+            """)
+
+            # Wait for images to load
             await page.wait_for_timeout(3000)
+
+            # Try to wait for all images to be loaded
+            await page.evaluate("""
+                () => {
+                    const images = document.querySelectorAll('img');
+                    return Promise.all(Array.from(images).map(img => {
+                        if (img.complete) return Promise.resolve();
+                        return new Promise(resolve => {
+                            img.onload = resolve;
+                            img.onerror = resolve;
+                            setTimeout(resolve, 5000);
+                        });
+                    }));
+                }
+            """)
 
             # Get page title
             title = await page.title()
@@ -157,6 +190,13 @@ class WebConverter:
         book.add_metadata("DC", "source", url)
         book.add_metadata("DC", "date", content["date"])
 
+        # Process images - download and embed them
+        content_html, image_items = self._process_images_for_epub(content["html"], url)
+
+        # Add all image items to the book
+        for img_item in image_items:
+            book.add_item(img_item)
+
         # Create chapter with article content
         chapter = epub.EpubHtml(
             title=title,
@@ -190,7 +230,7 @@ class WebConverter:
             <h1>{title}</h1>
             <p><small>Author: {content['author']} | Date: {content['date']}</small></p>
             <hr/>
-            {content['html']}
+            {content_html}
             <hr/>
             <p><small>Source: {url}</small></p>
         </body>
@@ -209,6 +249,85 @@ class WebConverter:
 
         # Write EPUB file
         epub.write_epub(output_path, book)
+
+    def _process_images_for_epub(self, html: str, base_url: str) -> tuple[str, list]:
+        """Download images and prepare them for EPUB embedding."""
+        soup = BeautifulSoup(html, "lxml")
+        image_items = []
+
+        for idx, img in enumerate(soup.find_all("img")):
+            # Get image URL (WeChat uses data-src for lazy loading)
+            img_url = img.get("data-src") or img.get("src")
+            if not img_url:
+                continue
+
+            # Skip data URLs (already embedded)
+            if img_url.startswith("data:"):
+                continue
+
+            # Make absolute URL
+            if not img_url.startswith(("http://", "https://")):
+                img_url = urljoin(base_url, img_url)
+
+            try:
+                # Download image
+                img_data = self._download_image(img_url)
+                if not img_data:
+                    continue
+
+                # Determine image type
+                content_type = "image/jpeg"
+                ext = "jpg"
+                if img_url.lower().endswith(".png") or b"\x89PNG" in img_data[:10]:
+                    content_type = "image/png"
+                    ext = "png"
+                elif img_url.lower().endswith(".gif") or b"GIF" in img_data[:10]:
+                    content_type = "image/gif"
+                    ext = "gif"
+                elif img_url.lower().endswith(".webp") or b"WEBP" in img_data[:20]:
+                    content_type = "image/webp"
+                    ext = "webp"
+
+                # Create unique filename
+                img_hash = hashlib.md5(img_url.encode()).hexdigest()[:8]
+                filename = f"images/img_{idx}_{img_hash}.{ext}"
+
+                # Create EPUB image item
+                img_item = epub.EpubItem(
+                    uid=f"img_{idx}",
+                    file_name=filename,
+                    media_type=content_type,
+                    content=img_data
+                )
+                image_items.append(img_item)
+
+                # Update img src in HTML
+                img["src"] = filename
+                # Remove data-src to avoid confusion
+                if img.get("data-src"):
+                    del img["data-src"]
+
+            except Exception as e:
+                print(f"Failed to download image {img_url}: {e}")
+                continue
+
+        return str(soup), image_items
+
+    def _download_image(self, url: str) -> bytes | None:
+        """Download image from URL."""
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+                              "AppleWebKit/605.1.15 Safari/604.1",
+                "Referer": "https://mp.weixin.qq.com/"
+            }
+            with httpx.Client(timeout=30, follow_redirects=True) as client:
+                response = client.get(url, headers=headers)
+                if response.status_code == 200:
+                    return response.content
+        except Exception as e:
+            print(f"Error downloading {url}: {e}")
+        return None
 
     def _safe_filename(self, title: str) -> str:
         """Convert title to safe filename."""
