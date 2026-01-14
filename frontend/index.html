@@ -90,6 +90,56 @@
             transform: none;
         }
 
+        /* Progress bar styles */
+        .progress-container {
+            display: none;
+            width: 100%;
+            height: 48px;
+            background: #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            transition: width 0.3s ease-out;
+        }
+
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            z-index: 1;
+        }
+
+        .milestone {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #666;
+            display: none;
+            text-align: center;
+        }
+
+        .milestone.active {
+            display: block;
+        }
+
         .status {
             margin-top: 20px;
             padding: 16px;
@@ -179,7 +229,13 @@
                 >
             </div>
             <button type="submit" id="submitBtn">Convert</button>
+            <div id="progressContainer" class="progress-container">
+                <div id="progressFill" class="progress-fill"></div>
+                <span id="progressText" class="progress-text">0%</span>
+            </div>
         </form>
+
+        <div id="milestone" class="milestone"></div>
 
         <div id="status" class="status"></div>
 
@@ -200,6 +256,10 @@
 
         const form = document.getElementById('convertForm');
         const submitBtn = document.getElementById('submitBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const milestone = document.getElementById('milestone');
         const status = document.getElementById('status');
         const downloads = document.getElementById('downloads');
         const articleTitle = document.getElementById('articleTitle');
@@ -215,47 +275,73 @@
             status.className = 'status';
         }
 
+        function updateProgress(percent, message) {
+            progressFill.style.width = percent + '%';
+            progressText.textContent = percent + '%';
+            milestone.textContent = message;
+            milestone.classList.add('active');
+        }
+
+        function resetUI() {
+            submitBtn.style.display = 'block';
+            progressContainer.classList.remove('active');
+            progressFill.style.width = '0%';
+            progressText.textContent = '0%';
+            milestone.classList.remove('active');
+            milestone.textContent = '';
+        }
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const url = document.getElementById('url').value;
 
-            // Reset UI
+            // Reset UI and show progress bar
             downloads.classList.remove('show');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Converting...';
-            showStatus('Converting article, please wait...', 'loading');
+            hideStatus();
+            submitBtn.style.display = 'none';
+            progressContainer.classList.add('active');
+            updateProgress(0, 'Starting...');
 
-            try {
-                const response = await fetch(`${API_URL}/convert`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ url }),
-                });
+            // Use Server-Sent Events for real-time progress
+            const eventSource = new EventSource(
+                `${API_URL}/convert/stream?url=${encodeURIComponent(url)}`
+            );
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Conversion failed');
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.error) {
+                    // Handle error
+                    eventSource.close();
+                    showStatus(`Error: ${data.message}`, 'error');
+                    resetUI();
+                    return;
                 }
 
-                const data = await response.json();
+                // Update progress bar and milestone
+                updateProgress(data.progress, data.message);
 
-                // Show download links
-                articleTitle.textContent = data.title;
-                pdfLink.href = `${API_URL}${data.pdf_url}`;
-                epubLink.href = `${API_URL}${data.epub_url}`;
-                downloads.classList.add('show');
+                if (data.complete) {
+                    // Conversion complete
+                    eventSource.close();
 
-                showStatus('Conversion complete!', 'success');
+                    // Show download links
+                    articleTitle.textContent = data.title;
+                    pdfLink.href = `${API_URL}${data.pdf_url}`;
+                    epubLink.href = `${API_URL}${data.epub_url}`;
+                    downloads.classList.add('show');
 
-            } catch (error) {
-                showStatus(`Error: ${error.message}`, 'error');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Convert';
-            }
+                    showStatus('Conversion complete!', 'success');
+                    resetUI();
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                eventSource.close();
+                showStatus('Error: Connection failed. Please try again.', 'error');
+                resetUI();
+            };
         });
     </script>
 </body>

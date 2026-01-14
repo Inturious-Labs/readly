@@ -3,12 +3,13 @@ Readly Backend API
 Converts webpage URLs to PDF and EPUB formats.
 """
 
+import json
 import os
 import tempfile
 import uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, HttpUrl
 
 from converter import WebConverter
@@ -79,6 +80,69 @@ async def convert_url(request: ConvertRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/convert/stream")
+async def convert_url_stream(url: str):
+    """
+    Convert a webpage URL to PDF and EPUB with Server-Sent Events progress.
+    Returns SSE stream with progress updates.
+    """
+    async def event_generator():
+        try:
+            converter = WebConverter()
+            result = None
+
+            async for progress in converter.convert_with_progress(url):
+                # Check if this is the final message with result
+                if "result" in progress:
+                    result = progress["result"]
+
+                # Send SSE event
+                event_data = json.dumps({
+                    "progress": progress["progress"],
+                    "message": progress["message"]
+                })
+                yield f"data: {event_data}\n\n"
+
+            # Generate job ID and store file paths
+            if result:
+                job_id = str(uuid.uuid4())[:8]
+                conversions[job_id] = {
+                    "pdf_path": result["pdf_path"],
+                    "epub_path": result["epub_path"],
+                    "title": result["title"]
+                }
+
+                # Send final event with download URLs
+                final_data = json.dumps({
+                    "progress": 100,
+                    "message": "Complete!",
+                    "complete": True,
+                    "job_id": job_id,
+                    "title": result["title"],
+                    "pdf_url": f"/download/{job_id}/pdf",
+                    "epub_url": f"/download/{job_id}/epub"
+                })
+                yield f"data: {final_data}\n\n"
+
+        except Exception as e:
+            error_data = json.dumps({
+                "progress": 0,
+                "message": str(e),
+                "error": True
+            })
+            yield f"data: {error_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
 
 
 @app.get("/download/{job_id}/{format}")

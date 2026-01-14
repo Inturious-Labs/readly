@@ -53,6 +53,153 @@ class WebConverter:
             "title": safe_title
         }
 
+    async def convert_with_progress(self, url: str):
+        """
+        Convert a URL to both PDF and EPUB with progress updates.
+        Yields progress dict: {"progress": 0-100, "message": "status"}
+        Final yield includes the result data.
+        """
+        yield {"progress": 5, "message": "Starting conversion..."}
+
+        async with async_playwright() as p:
+            # Use iPhone device emulation (WeChat blocks desktop browsers)
+            iphone = p.devices["iPhone 14 Pro"]
+
+            browser = await p.chromium.launch()
+            context = await browser.new_context(
+                **iphone,
+                locale="zh-CN"
+            )
+            page = await context.new_page()
+
+            yield {"progress": 10, "message": "Loading page..."}
+
+            # Use domcontentloaded instead of networkidle (faster, more reliable)
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+            yield {"progress": 25, "message": "Page loaded, rendering content..."}
+
+            # Wait for initial content to render
+            await page.wait_for_timeout(2000)
+
+            yield {"progress": 35, "message": "Scrolling to load images..."}
+
+            # Scroll down to trigger lazy-loading of images
+            await page.evaluate("""
+                async () => {
+                    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+                    for (let i = 0; i < document.body.scrollHeight; i += 300) {
+                        window.scrollTo(0, i);
+                        await delay(100);
+                    }
+                    window.scrollTo(0, 0);
+                }
+            """)
+
+            yield {"progress": 45, "message": "Waiting for images to load..."}
+
+            # Wait for images to load
+            await page.wait_for_timeout(3000)
+
+            # Try to wait for all images to be loaded
+            await page.evaluate("""
+                () => {
+                    const images = document.querySelectorAll('img');
+                    return Promise.all(Array.from(images).map(img => {
+                        if (img.complete) return Promise.resolve();
+                        return new Promise(resolve => {
+                            img.onload = resolve;
+                            img.onerror = resolve;
+                            setTimeout(resolve, 5000);
+                        });
+                    }));
+                }
+            """)
+
+            yield {"progress": 55, "message": "Preparing page for PDF..."}
+
+            # Get page title
+            title = await page.title()
+            if not title:
+                title = "Untitled"
+
+            # Get HTML content
+            html = await page.content()
+
+            # Use JavaScript to modify DOM for better PDF readability
+            await page.evaluate("""
+                () => {
+                    const textElements = document.querySelectorAll('p, span, section, div, h1, h2, h3, h4, h5, h6');
+                    textElements.forEach(el => {
+                        const currentSize = parseFloat(window.getComputedStyle(el).fontSize);
+                        if (currentSize && currentSize < 20) {
+                            el.style.fontSize = '18px';
+                            el.style.lineHeight = '1.8';
+                        }
+                    });
+
+                    const images = document.querySelectorAll('img');
+                    images.forEach(img => {
+                        img.style.maxWidth = '100%';
+                        img.style.width = '100%';
+                        img.style.height = 'auto';
+                    });
+
+                    const hideSelectors = [
+                        '.wx-root', '#js_pc_qr_code', '.qr_code_pc',
+                        '.rich_media_meta_list', '#js_tags_preview_toast',
+                        '.rich_media_tool', '.weui-desktop-popover'
+                    ];
+                    hideSelectors.forEach(selector => {
+                        document.querySelectorAll(selector).forEach(el => {
+                            el.style.display = 'none';
+                        });
+                    });
+
+                    document.querySelectorAll('p').forEach(p => {
+                        p.style.marginBottom = '1em';
+                    });
+                }
+            """)
+
+            yield {"progress": 65, "message": "Generating PDF..."}
+
+            # Generate PDF directly from Playwright
+            pdf_bytes = await page.pdf(
+                format="A4",
+                print_background=True,
+                margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"}
+            )
+
+            await browser.close()
+
+        yield {"progress": 75, "message": "Processing content..."}
+
+        # Parse content
+        content = self._extract_content(html, url)
+
+        # Generate safe filename
+        safe_title = self._safe_filename(title)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = f"{safe_title}_{timestamp}"
+
+        # Save PDF
+        pdf_path = os.path.join(self.temp_dir, f"{base_name}.pdf")
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+
+        yield {"progress": 85, "message": "Generating EPUB..."}
+
+        # Generate EPUB
+        epub_path = os.path.join(self.temp_dir, f"{base_name}.epub")
+        self._generate_epub(title, content, epub_path, url)
+
+        yield {"progress": 100, "message": "Complete!", "result": {
+            "pdf_path": pdf_path,
+            "epub_path": epub_path,
+            "title": safe_title
+        }}
+
     async def _scrape_page(self, url: str) -> tuple[str, str, bytes]:
         """
         Scrape page using Playwright.
