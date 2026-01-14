@@ -178,7 +178,7 @@
                     required
                 >
             </div>
-            <button type="submit" id="submitBtn">Convert</button>
+            <button type="submit" id="submitBtn">Convert <span id="envLabel"></span></button>
         </form>
 
         <div id="status" class="status"></div>
@@ -195,8 +195,16 @@
     </div>
 
     <script>
-        // Backend API URL
-        const API_URL = 'https://api.readly.space';
+        // Backend API URL - auto-detect based on environment
+        const IS_DEV = (
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.protocol === 'file:'
+        );
+        const API_URL = IS_DEV ? 'http://localhost:8000' : 'https://api.readly.space';
+
+        // Show environment indicator (only in dev mode)
+        document.getElementById('envLabel').textContent = IS_DEV ? '(dev)' : '';
 
         const form = document.getElementById('convertForm');
         const submitBtn = document.getElementById('submitBtn');
@@ -223,7 +231,7 @@
             // Reset UI
             downloads.classList.remove('show');
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Converting...';
+            submitBtn.innerHTML = `Converting... ${IS_DEV ? '<span id="envLabel">(dev)</span>' : ''}`;
             showStatus('Converting article, please wait...', 'loading');
 
             try {
@@ -254,7 +262,7 @@
                 showStatus(`Error: ${error.message}`, 'error');
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Convert';
+                submitBtn.innerHTML = `Convert ${IS_DEV ? '<span id="envLabel">(dev)</span>' : ''}`;
             }
         });
     </script>
