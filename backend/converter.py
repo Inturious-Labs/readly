@@ -113,6 +113,47 @@ class WebConverter:
             # Get HTML content
             html = await page.content()
 
+            # Use JavaScript to modify DOM for better PDF readability
+            # CSS alone doesn't work because WeChat uses inline styles
+            await page.evaluate("""
+                () => {
+                    // Increase font size on all text elements
+                    const textElements = document.querySelectorAll('p, span, section, div, h1, h2, h3, h4, h5, h6');
+                    textElements.forEach(el => {
+                        const currentSize = parseFloat(window.getComputedStyle(el).fontSize);
+                        if (currentSize && currentSize < 20) {
+                            el.style.fontSize = '18px';
+                            el.style.lineHeight = '1.8';
+                        }
+                    });
+
+                    // Make images larger - set width to 100% of container
+                    const images = document.querySelectorAll('img');
+                    images.forEach(img => {
+                        img.style.maxWidth = '100%';
+                        img.style.width = '100%';
+                        img.style.height = 'auto';
+                    });
+
+                    // Hide unnecessary UI elements
+                    const hideSelectors = [
+                        '.wx-root', '#js_pc_qr_code', '.qr_code_pc',
+                        '.rich_media_meta_list', '#js_tags_preview_toast',
+                        '.rich_media_tool', '.weui-desktop-popover'
+                    ];
+                    hideSelectors.forEach(selector => {
+                        document.querySelectorAll(selector).forEach(el => {
+                            el.style.display = 'none';
+                        });
+                    });
+
+                    // Increase spacing between paragraphs
+                    document.querySelectorAll('p').forEach(p => {
+                        p.style.marginBottom = '1em';
+                    });
+                }
+            """)
+
             # Generate PDF directly from Playwright (better quality)
             pdf_bytes = await page.pdf(
                 format="A4",
