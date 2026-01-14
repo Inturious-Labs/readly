@@ -4,19 +4,24 @@ Instructions for deploying Readly to a Linux server.
 
 ## Setup systemd service
 
-1. Copy the service file:
+1. Edit the service file and replace `YOUR_USER` with your Linux username:
+```bash
+sed -i 's/YOUR_USER/your_actual_username/g' ~/readly/deploy/readly.service
+```
+
+2. Copy the service file:
 ```bash
 sudo cp ~/readly/deploy/readly.service /etc/systemd/system/
 ```
 
-2. Reload systemd and enable the service:
+3. Reload systemd and enable the service:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable readly
 sudo systemctl start readly
 ```
 
-3. Check status:
+4. Check status:
 ```bash
 sudo systemctl status readly
 ```

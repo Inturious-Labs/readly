@@ -14,7 +14,7 @@ Paste a WeChat article URL, get PDF and EPUB files. Simple as that.
 ## Architecture
 
 ```
-Frontend (Vercel/Cloudflare)     Backend (Linode Singapore)
+Frontend (Vercel/Cloudflare)     Backend (VPS)
 ┌─────────────────────┐          ┌─────────────────────────┐
 │  Static HTML/JS     │  ──────> │  FastAPI + Playwright   │
 │  URL input form     │          │  PDF/EPUB generation    │
@@ -32,7 +32,7 @@ Frontend (Vercel/Cloudflare)     Backend (Linode Singapore)
 - Python + FastAPI
 - Playwright (headless browser for WeChat scraping)
 - ebooklib (EPUB generation)
-- Hosted on Linode (Singapore)
+- Hosted on any VPS (Linode, DigitalOcean, etc.)
 
 **Payments:**
 - Stripe + Alipay
@@ -61,7 +61,7 @@ python3 -m http.server 3000
 
 ## Deployment
 
-See `backend/README.md` for Linode deployment instructions.
+See `deploy/README.md` for server deployment instructions.
 
 ## License
 
