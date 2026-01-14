@@ -37,7 +37,7 @@ Exact pricing TBD (need to balance Stripe fees with user value). Options:
 
 ### Backend
 - **Stack:** Python + FastAPI
-- **Hosting:** Existing Linode server (Singapore)
+- **Hosting:** Any VPS (Linode, DigitalOcean, etc.)
 - **Features:**
   - `/convert` endpoint
   - Playwright for WeChat scraping (iPhone emulation)
@@ -51,15 +51,15 @@ Exact pricing TBD (need to balance Stripe fees with user value). Options:
 
 ## MVP Scope
 
-### Phase 1: Core Conversion (Current)
+### Phase 1: Core Conversion (Complete)
 - [x] FastAPI backend
 - [x] Playwright scraping with iPhone emulation
 - [x] PDF generation
 - [x] EPUB generation
 - [x] Simple frontend UI
-- [ ] Deploy backend to Linode
-- [ ] Deploy frontend to Vercel/Cloudflare
-- [ ] Test with real WeChat articles
+- [x] Deploy backend to VPS
+- [x] Deploy frontend to Vercel
+- [x] Test with real WeChat articles
 
 ### Phase 2: Payments
 - [ ] Stripe integration
@@ -71,7 +71,7 @@ Exact pricing TBD (need to balance Stripe fees with user value). Options:
 - [ ] Error handling improvements
 - [ ] Rate limiting
 - [ ] Basic analytics
-- [ ] Domain setup (readly.xxx)
+- [x] Domain setup (readly.space)
 
 ## Non-Goals (Keep It Simple)
 
