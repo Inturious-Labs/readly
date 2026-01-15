@@ -78,62 +78,89 @@
         }
 
         th, td {
-            padding: 12px 16px;
+            padding: 10px 12px;
             text-align: left;
             border-bottom: 1px solid #eee;
+            vertical-align: top;
         }
 
         th {
             background: #f9f9f9;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11px;
             text-transform: uppercase;
             color: #666;
+            white-space: nowrap;
         }
 
         td {
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .status-success {
             color: #22863a;
-            font-weight: 500;
+            font-weight: 700;
+            font-size: 16px;
+            text-align: center;
         }
 
         .status-failed {
             color: #d73a49;
+            font-weight: 700;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .size-cell, .download-cell {
+            white-space: nowrap;
+            font-size: 12px;
+        }
+
+        .article-cell {
+            max-width: 350px;
+        }
+
+        .article-title {
             font-weight: 500;
-        }
-
-        .url-cell {
-            position: relative;
-            max-width: 300px;
-        }
-
-        .url {
-            display: inline-block;
-            max-width: 250px;
+            margin-bottom: 4px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .article-url {
+            font-size: 12px;
+            color: #666;
+            position: relative;
+            display: inline-block;
+        }
+
+        .article-url span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+            max-width: 280px;
             vertical-align: middle;
         }
 
         .copy-btn {
             display: none;
             padding: 2px 8px;
-            margin-left: 8px;
-            font-size: 11px;
+            font-size: 10px;
             background: #667eea;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            vertical-align: middle;
+            position: absolute;
+            right: -45px;
+            top: 50%;
+            transform: translateY(-50%);
         }
 
-        .url-cell:hover .copy-btn {
-            display: inline-block;
+        .article-url:hover .copy-btn {
+            display: block;
         }
 
         .copy-btn:hover {
@@ -237,36 +264,35 @@
             <thead>
                 <tr>
                     <th>Status</th>
-                    <th>Title</th>
-                    <th>URL</th>
+                    <th>Article</th>
                     <th>Viewport</th>
-                    <th>File Sizes</th>
-                    <th>Downloads</th>
+                    <th>Size MB (PDF/EPUB)</th>
+                    <th>Downloads (PDF/EPUB)</th>
                     <th>Time</th>
-                    <th>Date</th>
+                    <th>Timestamp</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in recent %}
                 <tr>
-                    <td class="status-{{ row.status }}">{{ row.status }}</td>
-                    <td>{{ row.title or '-' }}</td>
-                    <td class="url-cell">
-                        <span class="url" title="{{ row.url }}">{{ row.url[:50] }}{% if row.url|length > 50 %}...{% endif %}</span>
-                        <button class="copy-btn" onclick="copyUrl(this, '{{ row.url }}')">Copy</button>
+                    <td class="status-{{ row.status }}">{% if row.status == 'success' %}✓{% else %}✗{% endif %}</td>
+                    <td class="article-cell">
+                        <div class="article-title" title="{{ row.title }}">{{ row.title or '-' }}</div>
+                        <div class="article-url">
+                            <span title="{{ row.url }}">{{ row.url[:60] }}{% if row.url|length > 60 %}...{% endif %}</span>
+                            <button class="copy-btn" onclick="copyUrl(this, '{{ row.url }}')">Copy</button>
+                        </div>
                     </td>
                     <td>{{ row.viewport_width or '-' }}x{{ row.viewport_height or '-' }}</td>
-                    <td>
+                    <td class="size-cell">
                         {% if row.pdf_size_bytes %}
-                            PDF: {{ (row.pdf_size_bytes / 1048576) | round(1) }}MB<br>
-                            EPUB: {{ (row.epub_size_bytes / 1048576) | round(1) }}MB
+                            {{ (row.pdf_size_bytes / 1048576) | round(1) }} / {{ (row.epub_size_bytes / 1048576) | round(1) }}
                         {% else %}
                             -
                         {% endif %}
                     </td>
-                    <td>
-                        PDF: {{ row.pdf_downloads or 0 }}<br>
-                        EPUB: {{ row.epub_downloads or 0 }}
+                    <td class="download-cell">
+                        {{ row.pdf_downloads or 0 }} / {{ row.epub_downloads or 0 }}
                     </td>
                     <td>{{ row.conversion_time or '-' }}s</td>
                     <td class="timestamp">{{ row.created_at }}</td>
