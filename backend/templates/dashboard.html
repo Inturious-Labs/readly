@@ -206,11 +206,11 @@
         </div>
         <div class="stat-card">
             <div class="label">Avg PDF Size</div>
-            <div class="value">{{ stats.avg_pdf_size_kb }}KB</div>
+            <div class="value">{{ stats.avg_pdf_size_mb }}MB</div>
         </div>
         <div class="stat-card">
             <div class="label">Avg EPUB Size</div>
-            <div class="value">{{ stats.avg_epub_size_kb }}KB</div>
+            <div class="value">{{ stats.avg_epub_size_mb }}MB</div>
         </div>
     </div>
 
@@ -258,8 +258,8 @@
                     <td>{{ row.viewport_width or '-' }}x{{ row.viewport_height or '-' }}</td>
                     <td>
                         {% if row.pdf_size_bytes %}
-                            PDF: {{ (row.pdf_size_bytes / 1024) | round(0) | int }}KB<br>
-                            EPUB: {{ (row.epub_size_bytes / 1024) | round(0) | int }}KB
+                            PDF: {{ (row.pdf_size_bytes / 1048576) | round(1) }}MB<br>
+                            EPUB: {{ (row.epub_size_bytes / 1048576) | round(1) }}MB
                         {% else %}
                             -
                         {% endif %}

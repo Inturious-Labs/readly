@@ -166,8 +166,8 @@ def get_stats() -> dict:
         "today": today_total,
         "this_week": week_total,
         "avg_conversion_time": round(avg_time, 1) if avg_time else 0,
-        "avg_pdf_size_kb": round(avg_pdf_size / 1024) if avg_pdf_size else 0,
-        "avg_epub_size_kb": round(avg_epub_size / 1024) if avg_epub_size else 0,
+        "avg_pdf_size_mb": round(avg_pdf_size / 1048576, 1) if avg_pdf_size else 0,
+        "avg_epub_size_mb": round(avg_epub_size / 1048576, 1) if avg_epub_size else 0,
         "total_pdf_downloads": total_pdf_downloads,
         "total_epub_downloads": total_epub_downloads,
         "total_downloads": total_pdf_downloads + total_epub_downloads
