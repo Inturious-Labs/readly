@@ -141,6 +141,7 @@ async def convert_url_stream(url: str):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering for SSE
         }
     )
 
