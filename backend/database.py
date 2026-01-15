@@ -35,6 +35,8 @@ def init_db():
             viewport_width INTEGER,
             viewport_height INTEGER,
             page_size TEXT,
+            pdf_path TEXT,
+            epub_path TEXT,
             pdf_size_bytes INTEGER,
             epub_size_bytes INTEGER,
             pdf_downloads INTEGER DEFAULT 0,
@@ -44,22 +46,18 @@ def init_db():
         )
     """)
     # Add new columns to existing table if they don't exist
-    try:
-        conn.execute("ALTER TABLE conversions ADD COLUMN pdf_size_bytes INTEGER")
-    except:
-        pass
-    try:
-        conn.execute("ALTER TABLE conversions ADD COLUMN epub_size_bytes INTEGER")
-    except:
-        pass
-    try:
-        conn.execute("ALTER TABLE conversions ADD COLUMN pdf_downloads INTEGER DEFAULT 0")
-    except:
-        pass
-    try:
-        conn.execute("ALTER TABLE conversions ADD COLUMN epub_downloads INTEGER DEFAULT 0")
-    except:
-        pass
+    for column, col_type in [
+        ("pdf_size_bytes", "INTEGER"),
+        ("epub_size_bytes", "INTEGER"),
+        ("pdf_downloads", "INTEGER DEFAULT 0"),
+        ("epub_downloads", "INTEGER DEFAULT 0"),
+        ("pdf_path", "TEXT"),
+        ("epub_path", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE conversions ADD COLUMN {column} {col_type}")
+        except:
+            pass
     conn.commit()
     conn.close()
 
@@ -73,6 +71,8 @@ def log_conversion(
     viewport_width: int = None,
     viewport_height: int = None,
     page_size: str = None,
+    pdf_path: str = None,
+    epub_path: str = None,
     pdf_size_bytes: int = None,
     epub_size_bytes: int = None,
     conversion_time: float = None
@@ -81,9 +81,9 @@ def log_conversion(
     conn = get_connection()
     conn.execute("""
         INSERT INTO conversions
-        (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_size_bytes, epub_size_bytes, conversion_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_size_bytes, epub_size_bytes, conversion_time))
+        (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_path, epub_path, pdf_size_bytes, epub_size_bytes, conversion_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_path, epub_path, pdf_size_bytes, epub_size_bytes, conversion_time))
     conn.commit()
     conn.close()
 
@@ -95,6 +95,17 @@ def increment_download(job_id: str, format: str):
     conn.execute(f"UPDATE conversions SET {column} = {column} + 1 WHERE job_id = ?", (job_id,))
     conn.commit()
     conn.close()
+
+
+def get_conversion(job_id: str) -> dict:
+    """Get a conversion by job_id."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT job_id, title, pdf_path, epub_path FROM conversions WHERE job_id = ?",
+        (job_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_stats() -> dict:

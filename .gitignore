@@ -31,6 +31,8 @@ output/*.epub
 output/*.md
 output/
 articles/
+backend/output/
+backend/data/
 
 # Python
 __pycache__/

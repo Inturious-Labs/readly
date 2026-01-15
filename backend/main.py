@@ -15,7 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, HttpUrl
 
 from converter import WebConverter
-from database import init_db, log_conversion, get_stats, get_recent, increment_download
+from database import init_db, log_conversion, get_stats, get_recent, increment_download, get_conversion
 
 # Admin password from environment variable
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -150,6 +150,8 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                     viewport_width=viewport_width,
                     viewport_height=viewport_height,
                     page_size=result["page_size"],
+                    pdf_path=result["pdf_path"],
+                    epub_path=result["epub_path"],
                     pdf_size_bytes=pdf_size,
                     epub_size_bytes=epub_size,
                     conversion_time=result["conversion_time"]
@@ -205,10 +207,12 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
 @app.get("/download/{job_id}/{format}")
 def download_file(job_id: str, format: str):
     """Download converted PDF or EPUB file."""
-    if job_id not in conversions:
+    # Try in-memory cache first, then fall back to database
+    job = conversions.get(job_id)
+    if not job:
+        job = get_conversion(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Conversion not found")
-
-    job = conversions[job_id]
 
     if format == "pdf":
         path = job["pdf_path"]
@@ -221,7 +225,7 @@ def download_file(job_id: str, format: str):
     else:
         raise HTTPException(status_code=400, detail="Format must be 'pdf' or 'epub'")
 
-    if not os.path.exists(path):
+    if not path or not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
 
     # Track download count
