@@ -83,17 +83,22 @@ async def convert_url(request: ConvertRequest):
 
 
 @app.get("/convert/stream")
-async def convert_url_stream(url: str):
+async def convert_url_stream(url: str, screen_width: int = 1170, screen_height: int = 2532):
     """
     Convert a webpage URL to PDF and EPUB with Server-Sent Events progress.
     Returns SSE stream with progress updates.
+
+    Args:
+        url: The webpage URL to convert
+        screen_width: User's screen width in pixels (default: iPhone 14 Pro)
+        screen_height: User's screen height in pixels (default: iPhone 14 Pro)
     """
     async def event_generator():
         try:
             converter = WebConverter()
             result = None
 
-            async for progress in converter.convert_with_progress(url):
+            async for progress in converter.convert_with_progress(url, screen_width, screen_height):
                 # Check if this is the final message with result
                 if "result" in progress:
                     result = progress["result"]
@@ -114,7 +119,7 @@ async def convert_url_stream(url: str):
                     "title": result["title"]
                 }
 
-                # Send final event with download URLs
+                # Send final event with download URLs and extra info
                 final_data = json.dumps({
                     "progress": 100,
                     "message": "Complete!",
@@ -122,7 +127,11 @@ async def convert_url_stream(url: str):
                     "job_id": job_id,
                     "title": result["title"],
                     "pdf_url": f"/download/{job_id}/pdf",
-                    "epub_url": f"/download/{job_id}/epub"
+                    "epub_url": f"/download/{job_id}/epub",
+                    "source_url": result["source_url"],
+                    "screen_dimensions": result["screen_dimensions"],
+                    "page_size": result["page_size"],
+                    "conversion_time": result["conversion_time"]
                 })
                 yield f"data: {final_data}\n\n"
 

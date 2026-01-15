@@ -7,6 +7,7 @@ import hashlib
 import os
 import re
 import tempfile
+import time
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
 
@@ -53,12 +54,48 @@ class WebConverter:
             "title": safe_title
         }
 
-    async def convert_with_progress(self, url: str):
+    def _calculate_page_size(self, screen_width: int, screen_height: int) -> dict:
+        """
+        Calculate PDF page size based on screen dimensions.
+        Returns dict with width and height in mm.
+        """
+        # Use a comfortable reading width as base
+        base_width_mm = 90  # mm - comfortable for mobile reading
+
+        # Calculate aspect ratio from screen (portrait orientation)
+        if screen_width > screen_height:
+            # Landscape screen, swap for portrait PDF
+            screen_width, screen_height = screen_height, screen_width
+
+        aspect_ratio = screen_height / screen_width
+        page_height_mm = base_width_mm * aspect_ratio
+
+        # Cap height to avoid extremely long pages
+        max_height_mm = 200
+        if page_height_mm > max_height_mm:
+            page_height_mm = max_height_mm
+
+        return {
+            "width": f"{base_width_mm}mm",
+            "height": f"{page_height_mm:.0f}mm"
+        }
+
+    async def convert_with_progress(self, url: str, screen_width: int = 1170, screen_height: int = 2532):
         """
         Convert a URL to both PDF and EPUB with progress updates.
         Yields progress dict: {"progress": 0-100, "message": "status"}
         Final yield includes the result data.
+
+        Args:
+            url: The webpage URL to convert
+            screen_width: User's screen width in pixels (default: iPhone 14 Pro)
+            screen_height: User's screen height in pixels (default: iPhone 14 Pro)
         """
+        start_time = time.time()
+
+        # Calculate dynamic page size
+        page_size = self._calculate_page_size(screen_width, screen_height)
+
         yield {"progress": 5, "message": "Starting conversion..."}
 
         async with async_playwright() as p:
@@ -164,11 +201,12 @@ class WebConverter:
 
             yield {"progress": 65, "message": "Generating PDF..."}
 
-            # Generate PDF directly from Playwright
+            # Generate PDF with dynamic page size based on user's screen
             pdf_bytes = await page.pdf(
-                format="A4",
+                width=page_size["width"],
+                height=page_size["height"],
                 print_background=True,
-                margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"}
+                margin={"top": "5mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
             )
 
             await browser.close()
@@ -194,10 +232,17 @@ class WebConverter:
         epub_path = os.path.join(self.temp_dir, f"{base_name}.epub")
         self._generate_epub(title, content, epub_path, url)
 
+        # Calculate conversion time
+        conversion_time = time.time() - start_time
+
         yield {"progress": 100, "message": "Complete!", "result": {
             "pdf_path": pdf_path,
             "epub_path": epub_path,
-            "title": safe_title
+            "title": safe_title,
+            "source_url": url,
+            "screen_dimensions": f"{screen_width}x{screen_height}",
+            "page_size": f"{page_size['width']} x {page_size['height']}",
+            "conversion_time": round(conversion_time, 1)
         }}
 
     async def _scrape_page(self, url: str) -> tuple[str, str, bytes]:
