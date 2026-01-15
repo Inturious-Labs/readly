@@ -194,7 +194,7 @@ class WebConverter:
                     const style = document.createElement('style');
                     style.textContent = `
                         * {
-                            font-family: "Noto Serif SC", "Noto Sans SC", serif !important;
+                            font-family: "Noto Serif SC", "Noto Serif", "Noto Sans SC", serif !important;
                         }
                     `;
                     document.head.appendChild(style);
@@ -449,7 +449,7 @@ class WebConverter:
             <title>{title}</title>
             <style>
                 body {{
-                    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+                    font-family: "Noto Serif SC", "Noto Serif", serif;
                     line-height: 1.8;
                     padding: 1em;
                     max-width: 800px;
