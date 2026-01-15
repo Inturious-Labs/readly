@@ -188,9 +188,17 @@ class WebConverter:
             html = await page.content()
 
             # Use JavaScript to modify DOM for PDF output
-            # Keep WeChat's native font styling, only adjust images and hide UI elements
             await page.evaluate("""
                 () => {
+                    // Inject Noto fonts for consistent Chinese rendering
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        * {
+                            font-family: "Noto Serif SC", "Noto Sans SC", serif !important;
+                        }
+                    `;
+                    document.head.appendChild(style);
+
                     // Make images fit the page width
                     const images = document.querySelectorAll('img');
                     images.forEach(img => {
