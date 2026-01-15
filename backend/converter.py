@@ -70,6 +70,13 @@ class WebConverter:
         if viewport_width > viewport_height:
             viewport_width, viewport_height = viewport_height, viewport_width
 
+        # Handle unusual aspect ratios (e.g., foldable phones in square-ish mode)
+        # If ratio < 1.3, use standard phone aspect ratio (9:19.5) for better readability
+        aspect_ratio = viewport_height / viewport_width
+        if aspect_ratio < 1.3:
+            aspect_ratio = 19.5 / 9  # ~2.17, standard modern phone ratio
+            viewport_height = int(viewport_width * aspect_ratio)
+
         # Calculate physical dimensions
         width_mm = viewport_width * px_to_mm
         height_mm = viewport_height * px_to_mm
@@ -100,6 +107,12 @@ class WebConverter:
         # Ensure portrait orientation for viewport
         if viewport_width > viewport_height:
             viewport_width, viewport_height = viewport_height, viewport_width
+
+        # Handle unusual aspect ratios (e.g., foldable phones in square-ish mode)
+        aspect_ratio = viewport_height / viewport_width
+        if aspect_ratio < 1.3:
+            aspect_ratio = 19.5 / 9  # Standard phone ratio
+            viewport_height = int(viewport_width * aspect_ratio)
 
         # Calculate PDF page size from viewport
         page_size = self._calculate_page_size(viewport_width, viewport_height)
