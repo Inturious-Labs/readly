@@ -56,28 +56,56 @@ class WebConverter:
 
     def _calculate_page_size(self, screen_width: int, screen_height: int) -> dict:
         """
-        Calculate PDF page size based on screen dimensions.
+        Calculate PDF page size to match the device's physical screen dimensions.
+        This ensures the PDF looks the same as on the original device.
+
+        We estimate physical size from pixel density:
+        - Most modern phones: ~460 PPI (iPhone 14 Pro: 460 PPI, ~71mm wide)
+        - Tablets: ~260 PPI
+        - Laptops: ~220 PPI (MacBook Pro: 254 PPI)
+
         Returns dict with width and height in mm.
         """
-        # Use a comfortable reading width as base
-        base_width_mm = 90  # mm - comfortable for mobile reading
+        # Assume high-DPI mobile device (~460 PPI) as default
+        # This matches iPhone 14 Pro and similar devices
+        # 1 inch = 25.4mm, so mm = pixels / PPI * 25.4
 
-        # Calculate aspect ratio from screen (portrait orientation)
+        # Use 460 PPI for mobile-like dimensions (pixels > 1000 on short side typically means phone/tablet)
+        # This gives iPhone 14 Pro (1179x2556): ~65mm x 141mm
+        ppi = 460
+
+        # Ensure portrait orientation
         if screen_width > screen_height:
-            # Landscape screen, swap for portrait PDF
             screen_width, screen_height = screen_height, screen_width
 
-        aspect_ratio = screen_height / screen_width
-        page_height_mm = base_width_mm * aspect_ratio
+        # Calculate physical dimensions
+        width_mm = (screen_width / ppi) * 25.4
+        height_mm = (screen_height / ppi) * 25.4
 
-        # Cap height to avoid extremely long pages
-        max_height_mm = 200
-        if page_height_mm > max_height_mm:
-            page_height_mm = max_height_mm
+        # Set reasonable bounds for readability
+        min_width_mm = 60   # Minimum readable width
+        max_width_mm = 120  # Maximum practical width for mobile reading
+        max_height_mm = 200 # Cap height for very tall screens
+
+        # Clamp width to reasonable bounds
+        if width_mm < min_width_mm:
+            # Scale up proportionally
+            scale = min_width_mm / width_mm
+            width_mm = min_width_mm
+            height_mm *= scale
+        elif width_mm > max_width_mm:
+            # Scale down proportionally
+            scale = max_width_mm / width_mm
+            width_mm = max_width_mm
+            height_mm *= scale
+
+        # Cap height
+        if height_mm > max_height_mm:
+            height_mm = max_height_mm
 
         return {
-            "width": f"{base_width_mm}mm",
-            "height": f"{page_height_mm:.0f}mm"
+            "width": f"{width_mm:.0f}mm",
+            "height": f"{height_mm:.0f}mm"
         }
 
     async def convert_with_progress(self, url: str, screen_width: int = 1170, screen_height: int = 2532):
