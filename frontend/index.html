@@ -204,6 +204,37 @@
             color: #333;
         }
 
+        .conversion-info {
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .conversion-info p {
+            margin: 4px 0;
+        }
+
+        .conversion-info .label {
+            color: #999;
+        }
+
+        .conversion-info .value {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .conversion-info a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .conversion-info a:hover {
+            text-decoration: underline;
+        }
+
         footer {
             margin-top: 30px;
             text-align: center;
@@ -243,6 +274,12 @@
             <p class="article-title" id="articleTitle"></p>
             <a id="pdfLink" class="download-btn pdf" href="#" download>Download PDF</a>
             <a id="epubLink" class="download-btn epub" href="#" download>Download EPUB</a>
+            <div class="conversion-info">
+                <p><span class="label">Source:</span> <a id="sourceUrl" href="#" target="_blank"></a></p>
+                <p><span class="label">Viewport:</span> <span id="viewportDimensions" class="value"></span></p>
+                <p><span class="label">PDF size:</span> <span id="pageSize" class="value"></span></p>
+                <p><span class="label">Time:</span> <span id="conversionTime" class="value"></span></p>
+            </div>
         </div>
 
         <footer>
@@ -252,13 +289,23 @@
 
     <script>
         // Backend API URL - auto-detect based on environment
+        const hostname = window.location.hostname;
         const IS_LOCAL = (
-            window.location.hostname === 'localhost' ||
-            window.location.hostname === '127.0.0.1' ||
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname.startsWith('192.168.') ||
+            hostname.startsWith('10.') ||
+            hostname.startsWith('172.16.') ||
+            hostname.startsWith('172.17.') ||
+            hostname.startsWith('172.18.') ||
+            hostname.startsWith('172.19.') ||
+            hostname.startsWith('172.2') ||
+            hostname.startsWith('172.30.') ||
+            hostname.startsWith('172.31.') ||
             window.location.protocol === 'file:'
         );
         const API_URL = IS_LOCAL
-            ? 'https://dev-api.readly.space'   // Local testing uses dev backend
+            ? 'https://dev-api.readly.space'   // Local/LAN testing uses dev backend
             : 'https://api.readly.space';       // Production uses prod backend
 
         // Show (dev) indicator only when using dev backend
@@ -275,6 +322,10 @@
         const articleTitle = document.getElementById('articleTitle');
         const pdfLink = document.getElementById('pdfLink');
         const epubLink = document.getElementById('epubLink');
+        const sourceUrl = document.getElementById('sourceUrl');
+        const viewportDimensions = document.getElementById('viewportDimensions');
+        const pageSize = document.getElementById('pageSize');
+        const conversionTime = document.getElementById('conversionTime');
 
         function showStatus(message, type) {
             status.textContent = message;
@@ -313,9 +364,13 @@
             progressContainer.classList.add('active');
             updateProgress(0, 'Starting...');
 
+            // Get user's CSS viewport dimensions for matching PDF output
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+
             // Use Server-Sent Events for real-time progress
             const eventSource = new EventSource(
-                `${API_URL}/convert/stream?url=${encodeURIComponent(url)}`
+                `${API_URL}/convert/stream?url=${encodeURIComponent(url)}&viewport_width=${viewportWidth}&viewport_height=${viewportHeight}`
             );
 
             eventSource.onmessage = (event) => {
@@ -340,6 +395,16 @@
                     articleTitle.textContent = data.title;
                     pdfLink.href = `${API_URL}${data.pdf_url}`;
                     epubLink.href = `${API_URL}${data.epub_url}`;
+
+                    // Display conversion info
+                    sourceUrl.href = data.source_url;
+                    sourceUrl.textContent = data.source_url.length > 50
+                        ? data.source_url.substring(0, 50) + '...'
+                        : data.source_url;
+                    viewportDimensions.textContent = data.viewport_dimensions + ' px';
+                    pageSize.textContent = data.page_size;
+                    conversionTime.textContent = data.conversion_time + ' seconds';
+
                     downloads.classList.add('show');
 
                     showStatus('Conversion complete!', 'success');

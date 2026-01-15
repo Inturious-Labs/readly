@@ -61,6 +61,30 @@ cd frontend
 python3 -m http.server 3000
 ```
 
+### Testing from Mobile Devices (iPhone/Android)
+
+To test the frontend from a phone on your local network:
+
+1. **Start a local server on your Mac:**
+   ```bash
+   cd frontend
+   python3 -m http.server 8080
+   ```
+
+2. **Find your Mac's local IP:**
+   ```bash
+   ipconfig getifaddr en0
+   ```
+   This will return something like `192.168.1.100`
+
+3. **On your phone**, open: `http://<mac-ip>:8080`
+
+   Example: `http://192.168.1.100:8080`
+
+The frontend auto-detects local network IPs (192.168.x.x, 10.x.x.x, etc.) and will use the **dev backend** (`dev-api.readly.space`). You'll see "(dev)" on the Convert button to confirm.
+
+When accessed from the public internet (e.g., `readly.space`), it uses the **production backend** (`api.readly.space`).
+
 ## API Endpoints
 
 ### Health Check

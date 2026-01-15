@@ -7,6 +7,7 @@ import hashlib
 import os
 import re
 import tempfile
+import time
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
 
@@ -53,22 +54,82 @@ class WebConverter:
             "title": safe_title
         }
 
-    async def convert_with_progress(self, url: str):
+    def _calculate_page_size(self, viewport_width: int, viewport_height: int) -> dict:
+        """
+        Calculate PDF page size from CSS viewport dimensions.
+
+        Uses a standard conversion: 1 CSS pixel ≈ 0.264mm (96 DPI standard)
+        This ensures the PDF looks the same as on the user's device.
+
+        Returns dict with width and height in mm.
+        """
+        # Standard CSS pixel to mm conversion (96 DPI = 0.264mm per pixel)
+        px_to_mm = 0.264
+
+        # Ensure portrait orientation
+        if viewport_width > viewport_height:
+            viewport_width, viewport_height = viewport_height, viewport_width
+
+        # Handle unusual aspect ratios (e.g., foldable phones in square-ish mode)
+        # If ratio < 1.3, use standard phone aspect ratio (9:19.5) for better readability
+        aspect_ratio = viewport_height / viewport_width
+        if aspect_ratio < 1.3:
+            aspect_ratio = 19.5 / 9  # ~2.17, standard modern phone ratio
+            viewport_height = int(viewport_width * aspect_ratio)
+
+        # Calculate physical dimensions
+        width_mm = viewport_width * px_to_mm
+        height_mm = viewport_height * px_to_mm
+
+        # Cap height to avoid extremely long pages
+        max_height_mm = 250
+        if height_mm > max_height_mm:
+            height_mm = max_height_mm
+
+        return {
+            "width": f"{width_mm:.0f}mm",
+            "height": f"{height_mm:.0f}mm"
+        }
+
+    async def convert_with_progress(self, url: str, viewport_width: int = 430, viewport_height: int = 932):
         """
         Convert a URL to both PDF and EPUB with progress updates.
         Yields progress dict: {"progress": 0-100, "message": "status"}
         Final yield includes the result data.
+
+        Args:
+            url: The webpage URL to convert
+            viewport_width: User's CSS viewport width (default: iPhone 16 Pro Max)
+            viewport_height: User's CSS viewport height (default: iPhone 16 Pro Max)
         """
+        start_time = time.time()
+
+        # Ensure portrait orientation for viewport
+        if viewport_width > viewport_height:
+            viewport_width, viewport_height = viewport_height, viewport_width
+
+        # Handle unusual aspect ratios (e.g., foldable phones in square-ish mode)
+        aspect_ratio = viewport_height / viewport_width
+        if aspect_ratio < 1.3:
+            aspect_ratio = 19.5 / 9  # Standard phone ratio
+            viewport_height = int(viewport_width * aspect_ratio)
+
+        # Calculate PDF page size from viewport
+        page_size = self._calculate_page_size(viewport_width, viewport_height)
+
         yield {"progress": 5, "message": "Starting conversion..."}
 
         async with async_playwright() as p:
-            # Use iPhone device emulation (WeChat blocks desktop browsers)
-            iphone = p.devices["iPhone 14 Pro"]
-
             browser = await p.chromium.launch()
+
+            # Use custom viewport matching user's device, with mobile user agent
             context = await browser.new_context(
-                **iphone,
-                locale="zh-CN"
+                viewport={"width": viewport_width, "height": viewport_height},
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                locale="zh-CN",
+                device_scale_factor=3,
+                is_mobile=True,
+                has_touch=True,
             )
             page = await context.new_page()
 
@@ -126,25 +187,26 @@ class WebConverter:
             # Get HTML content
             html = await page.content()
 
-            # Use JavaScript to modify DOM for better PDF readability
+            # Use JavaScript to modify DOM for PDF output
             await page.evaluate("""
                 () => {
-                    const textElements = document.querySelectorAll('p, span, section, div, h1, h2, h3, h4, h5, h6');
-                    textElements.forEach(el => {
-                        const currentSize = parseFloat(window.getComputedStyle(el).fontSize);
-                        if (currentSize && currentSize < 20) {
-                            el.style.fontSize = '18px';
-                            el.style.lineHeight = '1.8';
+                    // Inject Noto fonts for consistent Chinese rendering
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        * {
+                            font-family: "Noto Serif SC", "Noto Serif", "Noto Sans SC", serif !important;
                         }
-                    });
+                    `;
+                    document.head.appendChild(style);
 
+                    // Make images fit the page width
                     const images = document.querySelectorAll('img');
                     images.forEach(img => {
                         img.style.maxWidth = '100%';
-                        img.style.width = '100%';
                         img.style.height = 'auto';
                     });
 
+                    // Hide unnecessary UI elements
                     const hideSelectors = [
                         '.wx-root', '#js_pc_qr_code', '.qr_code_pc',
                         '.rich_media_meta_list', '#js_tags_preview_toast',
@@ -155,20 +217,17 @@ class WebConverter:
                             el.style.display = 'none';
                         });
                     });
-
-                    document.querySelectorAll('p').forEach(p => {
-                        p.style.marginBottom = '1em';
-                    });
                 }
             """)
 
             yield {"progress": 65, "message": "Generating PDF..."}
 
-            # Generate PDF directly from Playwright
+            # Generate PDF with dynamic page size based on user's screen
             pdf_bytes = await page.pdf(
-                format="A4",
+                width=page_size["width"],
+                height=page_size["height"],
                 print_background=True,
-                margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"}
+                margin={"top": "5mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
             )
 
             await browser.close()
@@ -194,10 +253,17 @@ class WebConverter:
         epub_path = os.path.join(self.temp_dir, f"{base_name}.epub")
         self._generate_epub(title, content, epub_path, url)
 
+        # Calculate conversion time
+        conversion_time = time.time() - start_time
+
         yield {"progress": 100, "message": "Complete!", "result": {
             "pdf_path": pdf_path,
             "epub_path": epub_path,
-            "title": safe_title
+            "title": safe_title,
+            "source_url": url,
+            "viewport_dimensions": f"{viewport_width}x{viewport_height}",
+            "page_size": f"{page_size['width']} x {page_size['height']}",
+            "conversion_time": round(conversion_time, 1)
         }}
 
     async def _scrape_page(self, url: str) -> tuple[str, str, bytes]:
@@ -260,25 +326,14 @@ class WebConverter:
             # Get HTML content
             html = await page.content()
 
-            # Use JavaScript to modify DOM for better PDF readability
-            # CSS alone doesn't work because WeChat uses inline styles
+            # Use JavaScript to modify DOM for PDF output
+            # Keep WeChat's native font styling, only adjust images and hide UI elements
             await page.evaluate("""
                 () => {
-                    // Increase font size on all text elements
-                    const textElements = document.querySelectorAll('p, span, section, div, h1, h2, h3, h4, h5, h6');
-                    textElements.forEach(el => {
-                        const currentSize = parseFloat(window.getComputedStyle(el).fontSize);
-                        if (currentSize && currentSize < 20) {
-                            el.style.fontSize = '18px';
-                            el.style.lineHeight = '1.8';
-                        }
-                    });
-
-                    // Make images larger - set width to 100% of container
+                    // Make images fit the page width
                     const images = document.querySelectorAll('img');
                     images.forEach(img => {
                         img.style.maxWidth = '100%';
-                        img.style.width = '100%';
                         img.style.height = 'auto';
                     });
 
@@ -292,11 +347,6 @@ class WebConverter:
                         document.querySelectorAll(selector).forEach(el => {
                             el.style.display = 'none';
                         });
-                    });
-
-                    // Increase spacing between paragraphs
-                    document.querySelectorAll('p').forEach(p => {
-                        p.style.marginBottom = '1em';
                     });
                 }
             """)
@@ -399,7 +449,7 @@ class WebConverter:
             <title>{title}</title>
             <style>
                 body {{
-                    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+                    font-family: "Noto Serif SC", "Noto Serif", serif;
                     line-height: 1.8;
                     padding: 1em;
                     max-width: 800px;
