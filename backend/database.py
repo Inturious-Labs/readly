@@ -1,0 +1,123 @@
+"""
+SQLite database for tracking conversions.
+"""
+
+import os
+import sqlite3
+from datetime import datetime, timedelta
+from pathlib import Path
+
+
+# Database file location
+DB_DIR = Path(__file__).parent / "data"
+DB_PATH = DB_DIR / "readly.db"
+
+
+def get_connection():
+    """Get a database connection."""
+    DB_DIR.mkdir(exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    """Initialize the database schema."""
+    conn = get_connection()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversions (
+            id INTEGER PRIMARY KEY,
+            job_id TEXT UNIQUE,
+            url TEXT,
+            title TEXT,
+            status TEXT,
+            error_message TEXT,
+            viewport_width INTEGER,
+            viewport_height INTEGER,
+            page_size TEXT,
+            conversion_time REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def log_conversion(
+    job_id: str,
+    url: str,
+    title: str = None,
+    status: str = "success",
+    error_message: str = None,
+    viewport_width: int = None,
+    viewport_height: int = None,
+    page_size: str = None,
+    conversion_time: float = None
+):
+    """Log a conversion to the database."""
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO conversions
+        (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, conversion_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, conversion_time))
+    conn.commit()
+    conn.close()
+
+
+def get_stats() -> dict:
+    """Get aggregated conversion statistics."""
+    conn = get_connection()
+
+    now = datetime.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())
+
+    # Total counts
+    total = conn.execute("SELECT COUNT(*) FROM conversions").fetchone()[0]
+    success = conn.execute("SELECT COUNT(*) FROM conversions WHERE status = 'success'").fetchone()[0]
+    failed = conn.execute("SELECT COUNT(*) FROM conversions WHERE status = 'failed'").fetchone()[0]
+
+    # Today counts
+    today_total = conn.execute(
+        "SELECT COUNT(*) FROM conversions WHERE created_at >= ?",
+        (today_start.isoformat(),)
+    ).fetchone()[0]
+
+    # This week counts
+    week_total = conn.execute(
+        "SELECT COUNT(*) FROM conversions WHERE created_at >= ?",
+        (week_start.isoformat(),)
+    ).fetchone()[0]
+
+    # Average conversion time (successful only)
+    avg_time = conn.execute(
+        "SELECT AVG(conversion_time) FROM conversions WHERE status = 'success' AND conversion_time IS NOT NULL"
+    ).fetchone()[0]
+
+    conn.close()
+
+    return {
+        "total": total,
+        "success": success,
+        "failed": failed,
+        "success_rate": round(success / total * 100, 1) if total > 0 else 0,
+        "today": today_total,
+        "this_week": week_total,
+        "avg_conversion_time": round(avg_time, 1) if avg_time else 0
+    }
+
+
+def get_recent(limit: int = 20) -> list:
+    """Get recent conversions."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT job_id, url, title, status, error_message, viewport_width, viewport_height,
+               page_size, conversion_time, created_at
+        FROM conversions
+        ORDER BY created_at DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
