@@ -133,6 +133,11 @@
             color: #666;
             position: relative;
             display: inline-block;
+            cursor: pointer;
+        }
+
+        .article-url:hover {
+            color: #667eea;
         }
 
         .article-url span {
@@ -140,35 +145,36 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             display: inline-block;
-            max-width: 280px;
+            max-width: 320px;
             vertical-align: middle;
         }
 
-        .copy-btn {
+        .copy-hint {
             display: none;
-            padding: 2px 8px;
+            margin-left: 8px;
+            color: #667eea;
             font-size: 10px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
+        }
+
+        .article-url:hover .copy-hint {
+            display: inline;
+        }
+
+        .copy-tooltip {
+            display: none;
             position: absolute;
-            right: -45px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .article-url:hover .copy-btn {
-            display: block;
-        }
-
-        .copy-btn:hover {
-            background: #5a6fd6;
-        }
-
-        .copy-btn.copied {
+            left: 0;
+            top: -24px;
             background: #22863a;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .copy-tooltip.show {
+            display: block;
         }
 
         .timestamp {
@@ -266,8 +272,8 @@
                     <th>Status</th>
                     <th>Article</th>
                     <th>Viewport</th>
-                    <th>Size MB (PDF/EPUB)</th>
-                    <th>Downloads (PDF/EPUB)</th>
+                    <th>Size MB<br><small>(PDF/EPUB)</small></th>
+                    <th>Downloads<br><small>(PDF/EPUB)</small></th>
                     <th>Time</th>
                     <th>Timestamp</th>
                 </tr>
@@ -278,9 +284,10 @@
                     <td class="status-{{ row.status }}">{% if row.status == 'success' %}✓{% else %}✗{% endif %}</td>
                     <td class="article-cell">
                         <div class="article-title" title="{{ row.title }}">{{ row.title or '-' }}</div>
-                        <div class="article-url">
-                            <span title="{{ row.url }}">{{ row.url[:60] }}{% if row.url|length > 60 %}...{% endif %}</span>
-                            <button class="copy-btn" onclick="copyUrl(this, '{{ row.url }}')">Copy</button>
+                        <div class="article-url" onclick="copyUrl(this, '{{ row.url }}')">
+                            <span>{{ row.url[:60] }}{% if row.url|length > 60 %}...{% endif %}</span>
+                            <span class="copy-hint">copy</span>
+                            <div class="copy-tooltip">URL copied!</div>
                         </div>
                     </td>
                     <td>{{ row.viewport_width or '-' }}x{{ row.viewport_height or '-' }}</td>
@@ -308,13 +315,12 @@
     <p class="refresh-note">Auto-refreshes every 60 seconds</p>
 
     <script>
-        function copyUrl(btn, url) {
+        function copyUrl(element, url) {
             navigator.clipboard.writeText(url).then(() => {
-                btn.textContent = 'Copied!';
-                btn.classList.add('copied');
+                const tooltip = element.querySelector('.copy-tooltip');
+                tooltip.classList.add('show');
                 setTimeout(() => {
-                    btn.textContent = 'Copy';
-                    btn.classList.remove('copied');
+                    tooltip.classList.remove('show');
                 }, 1500);
             });
         }
