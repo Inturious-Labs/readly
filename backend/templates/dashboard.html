@@ -28,7 +28,11 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 16px;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
+        }
+
+        .stats-grid.three-col {
+            grid-template-columns: repeat(3, 1fr);
         }
 
         .stat-card {
@@ -101,11 +105,43 @@
             font-weight: 500;
         }
 
-        .url {
+        .url-cell {
+            position: relative;
             max-width: 300px;
+        }
+
+        .url {
+            display: inline-block;
+            max-width: 250px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .copy-btn {
+            display: none;
+            padding: 2px 8px;
+            margin-left: 8px;
+            font-size: 11px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+
+        .url-cell:hover .copy-btn {
+            display: inline-block;
+        }
+
+        .copy-btn:hover {
+            background: #5a6fd6;
+        }
+
+        .copy-btn.copied {
+            background: #22863a;
         }
 
         .timestamp {
@@ -128,13 +164,26 @@
     </style>
 </head>
 <body>
-    <h1>Readly Admin Dashboard</h1>
+    <h1>Readly Admin Dashboard <span style="font-size: 0.5em; padding: 4px 12px; border-radius: 4px; background: {{ '#f0ad4e' if env == 'development' else '#5cb85c' }}; color: white; vertical-align: middle;">{{ env | upper }}</span></h1>
 
-    <div class="stats-grid">
+    <h2>Volume</h2>
+    <div class="stats-grid three-col">
         <div class="stat-card">
-            <div class="label">Total Conversions</div>
+            <div class="label">Total</div>
             <div class="value">{{ stats.total }}</div>
         </div>
+        <div class="stat-card">
+            <div class="label">Today</div>
+            <div class="value">{{ stats.today }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">This Week</div>
+            <div class="value">{{ stats.this_week }}</div>
+        </div>
+    </div>
+
+    <h2>Outcomes</h2>
+    <div class="stats-grid three-col">
         <div class="stat-card success">
             <div class="label">Successful</div>
             <div class="value">{{ stats.success }}</div>
@@ -147,17 +196,37 @@
             <div class="label">Success Rate</div>
             <div class="value">{{ stats.success_rate }}%</div>
         </div>
-        <div class="stat-card">
-            <div class="label">Today</div>
-            <div class="value">{{ stats.today }}</div>
-        </div>
-        <div class="stat-card">
-            <div class="label">This Week</div>
-            <div class="value">{{ stats.this_week }}</div>
-        </div>
+    </div>
+
+    <h2>Performance</h2>
+    <div class="stats-grid three-col">
         <div class="stat-card">
             <div class="label">Avg Time</div>
             <div class="value">{{ stats.avg_conversion_time }}s</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Avg PDF Size</div>
+            <div class="value">{{ stats.avg_pdf_size_kb }}KB</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Avg EPUB Size</div>
+            <div class="value">{{ stats.avg_epub_size_kb }}KB</div>
+        </div>
+    </div>
+
+    <h2>Downloads</h2>
+    <div class="stats-grid three-col">
+        <div class="stat-card">
+            <div class="label">Total Downloads</div>
+            <div class="value">{{ stats.total_downloads }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">PDF Downloads</div>
+            <div class="value">{{ stats.total_pdf_downloads }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">EPUB Downloads</div>
+            <div class="value">{{ stats.total_epub_downloads }}</div>
         </div>
     </div>
 
@@ -171,7 +240,8 @@
                     <th>Title</th>
                     <th>URL</th>
                     <th>Viewport</th>
-                    <th>PDF Size</th>
+                    <th>File Sizes</th>
+                    <th>Downloads</th>
                     <th>Time</th>
                     <th>Date</th>
                 </tr>
@@ -181,9 +251,23 @@
                 <tr>
                     <td class="status-{{ row.status }}">{{ row.status }}</td>
                     <td>{{ row.title or '-' }}</td>
-                    <td class="url" title="{{ row.url }}">{{ row.url[:50] }}{% if row.url|length > 50 %}...{% endif %}</td>
+                    <td class="url-cell">
+                        <span class="url" title="{{ row.url }}">{{ row.url[:50] }}{% if row.url|length > 50 %}...{% endif %}</span>
+                        <button class="copy-btn" onclick="copyUrl(this, '{{ row.url }}')">Copy</button>
+                    </td>
                     <td>{{ row.viewport_width or '-' }}x{{ row.viewport_height or '-' }}</td>
-                    <td>{{ row.page_size or '-' }}</td>
+                    <td>
+                        {% if row.pdf_size_bytes %}
+                            PDF: {{ (row.pdf_size_bytes / 1024) | round(0) | int }}KB<br>
+                            EPUB: {{ (row.epub_size_bytes / 1024) | round(0) | int }}KB
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        PDF: {{ row.pdf_downloads or 0 }}<br>
+                        EPUB: {{ row.epub_downloads or 0 }}
+                    </td>
                     <td>{{ row.conversion_time or '-' }}s</td>
                     <td class="timestamp">{{ row.created_at }}</td>
                 </tr>
@@ -196,5 +280,18 @@
     </div>
 
     <p class="refresh-note">Auto-refreshes every 60 seconds</p>
+
+    <script>
+        function copyUrl(btn, url) {
+            navigator.clipboard.writeText(url).then(() => {
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 1500);
+            });
+        }
+    </script>
 </body>
 </html>

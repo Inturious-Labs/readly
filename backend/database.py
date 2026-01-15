@@ -35,10 +35,31 @@ def init_db():
             viewport_width INTEGER,
             viewport_height INTEGER,
             page_size TEXT,
+            pdf_size_bytes INTEGER,
+            epub_size_bytes INTEGER,
+            pdf_downloads INTEGER DEFAULT 0,
+            epub_downloads INTEGER DEFAULT 0,
             conversion_time REAL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Add new columns to existing table if they don't exist
+    try:
+        conn.execute("ALTER TABLE conversions ADD COLUMN pdf_size_bytes INTEGER")
+    except:
+        pass
+    try:
+        conn.execute("ALTER TABLE conversions ADD COLUMN epub_size_bytes INTEGER")
+    except:
+        pass
+    try:
+        conn.execute("ALTER TABLE conversions ADD COLUMN pdf_downloads INTEGER DEFAULT 0")
+    except:
+        pass
+    try:
+        conn.execute("ALTER TABLE conversions ADD COLUMN epub_downloads INTEGER DEFAULT 0")
+    except:
+        pass
     conn.commit()
     conn.close()
 
@@ -52,15 +73,26 @@ def log_conversion(
     viewport_width: int = None,
     viewport_height: int = None,
     page_size: str = None,
+    pdf_size_bytes: int = None,
+    epub_size_bytes: int = None,
     conversion_time: float = None
 ):
     """Log a conversion to the database."""
     conn = get_connection()
     conn.execute("""
         INSERT INTO conversions
-        (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, conversion_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, conversion_time))
+        (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_size_bytes, epub_size_bytes, conversion_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_size_bytes, epub_size_bytes, conversion_time))
+    conn.commit()
+    conn.close()
+
+
+def increment_download(job_id: str, format: str):
+    """Increment download count for a conversion."""
+    conn = get_connection()
+    column = "pdf_downloads" if format == "pdf" else "epub_downloads"
+    conn.execute(f"UPDATE conversions SET {column} = {column} + 1 WHERE job_id = ?", (job_id,))
     conn.commit()
     conn.close()
 
@@ -95,6 +127,24 @@ def get_stats() -> dict:
         "SELECT AVG(conversion_time) FROM conversions WHERE status = 'success' AND conversion_time IS NOT NULL"
     ).fetchone()[0]
 
+    # Average file sizes (successful only)
+    avg_pdf_size = conn.execute(
+        "SELECT AVG(pdf_size_bytes) FROM conversions WHERE status = 'success' AND pdf_size_bytes IS NOT NULL"
+    ).fetchone()[0]
+
+    avg_epub_size = conn.execute(
+        "SELECT AVG(epub_size_bytes) FROM conversions WHERE status = 'success' AND epub_size_bytes IS NOT NULL"
+    ).fetchone()[0]
+
+    # Total downloads
+    total_pdf_downloads = conn.execute(
+        "SELECT SUM(pdf_downloads) FROM conversions"
+    ).fetchone()[0] or 0
+
+    total_epub_downloads = conn.execute(
+        "SELECT SUM(epub_downloads) FROM conversions"
+    ).fetchone()[0] or 0
+
     conn.close()
 
     return {
@@ -104,7 +154,12 @@ def get_stats() -> dict:
         "success_rate": round(success / total * 100, 1) if total > 0 else 0,
         "today": today_total,
         "this_week": week_total,
-        "avg_conversion_time": round(avg_time, 1) if avg_time else 0
+        "avg_conversion_time": round(avg_time, 1) if avg_time else 0,
+        "avg_pdf_size_kb": round(avg_pdf_size / 1024) if avg_pdf_size else 0,
+        "avg_epub_size_kb": round(avg_epub_size / 1024) if avg_epub_size else 0,
+        "total_pdf_downloads": total_pdf_downloads,
+        "total_epub_downloads": total_epub_downloads,
+        "total_downloads": total_pdf_downloads + total_epub_downloads
     }
 
 
@@ -113,7 +168,9 @@ def get_recent(limit: int = 20) -> list:
     conn = get_connection()
     rows = conn.execute("""
         SELECT job_id, url, title, status, error_message, viewport_width, viewport_height,
-               page_size, conversion_time, created_at
+               page_size, pdf_size_bytes, epub_size_bytes, pdf_downloads, epub_downloads,
+               conversion_time,
+               datetime(created_at, '+8 hours') as created_at
         FROM conversions
         ORDER BY created_at DESC
         LIMIT ?

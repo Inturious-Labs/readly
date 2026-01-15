@@ -15,10 +15,13 @@ from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, HttpUrl
 
 from converter import WebConverter
-from database import init_db, log_conversion, get_stats, get_recent
+from database import init_db, log_conversion, get_stats, get_recent, increment_download
 
 # Admin password from environment variable
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+# Environment indicator (development or production)
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
 
 # Jinja2 template setup
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -134,6 +137,10 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                     "title": result["title"]
                 }
 
+                # Get file sizes
+                pdf_size = os.path.getsize(result["pdf_path"]) if os.path.exists(result["pdf_path"]) else None
+                epub_size = os.path.getsize(result["epub_path"]) if os.path.exists(result["epub_path"]) else None
+
                 # Log successful conversion to database
                 log_conversion(
                     job_id=job_id,
@@ -143,6 +150,8 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                     viewport_width=viewport_width,
                     viewport_height=viewport_height,
                     page_size=result["page_size"],
+                    pdf_size_bytes=pdf_size,
+                    epub_size_bytes=epub_size,
                     conversion_time=result["conversion_time"]
                 )
 
@@ -215,6 +224,9 @@ def download_file(job_id: str, format: str):
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Track download count
+    increment_download(job_id, format)
+
     return FileResponse(
         path=path,
         media_type=media_type,
@@ -238,7 +250,8 @@ def admin_dashboard(password: str = ""):
     template = jinja_env.get_template("dashboard.html")
     html = template.render(
         stats=get_stats(),
-        recent=get_recent(limit=50)
+        recent=get_recent(limit=50),
+        env=ENVIRONMENT
     )
     return HTMLResponse(content=html)
 
