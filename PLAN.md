@@ -79,7 +79,51 @@ Exact pricing TBD (need to balance Stripe fees with user value). Options:
 - No subscription model (initially)
 - No ICP/blockchain
 - No complex features
-- No mobile app
+
+## Mobile App Strategy (Future Consideration)
+
+### Why Mobile?
+The killer UX is Share Sheet integration: user reads WeChat article → taps Share → selects Readly → converts. This requires a native app; PWAs cannot be share targets on iOS.
+
+### Cross-Platform Options (2026 Analysis)
+
+For a solo builder avoiding separate iOS/Android codebases:
+
+| Approach | Effort | Best For |
+|----------|--------|----------|
+| **Capacitor** | Low | Wrap existing web app, quick to ship |
+| **Flutter** | Medium | Starting fresh, native feel, one codebase |
+| **React Native** | Medium | JS developers, large ecosystem |
+| **Kotlin Multiplatform** | High | Share logic, native UI (still maturing) |
+
+### Native Feature Support via Capacitor
+
+| Feature | Support |
+|---------|---------|
+| Share Sheet (iOS/Android) | Yes - plugin available |
+| Sign in with Apple | Yes - official plugin |
+| Sign in with Google | Yes - official plugin |
+| Push Notifications | Yes - official plugin |
+| Face ID / Touch ID | Yes - community plugin |
+| iCloud Storage | Partial - needs custom Swift |
+| Widgets | No - requires native code |
+
+### Recommendation
+
+**Start with Capacitor** when ready for mobile:
+1. Reuses existing web frontend
+2. Readly's UI is simple (form + progress + downloads)
+3. Main native feature needed (Share Sheet) has plugins
+4. Ship to both app stores in days, not weeks
+5. Can migrate to Flutter/native later if needed
+
+### Decision Criteria for Going Mobile
+
+Consider building mobile app when:
+- [ ] Web version has proven demand (consistent paying users)
+- [ ] Users request mobile/Share Sheet integration
+- [ ] Payment system is working and profitable
+- [ ] Have bandwidth for app store review process
 
 ## Risks
 
