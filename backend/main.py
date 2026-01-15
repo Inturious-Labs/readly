@@ -7,18 +7,36 @@ import json
 import os
 import tempfile
 import uuid
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, HttpUrl
 
 from converter import WebConverter
+from database import init_db, log_conversion, get_stats, get_recent, increment_download, get_conversion
+
+# Admin password from environment variable
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+# Environment indicator (development or production)
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
+
+# Jinja2 template setup
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+jinja_env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
 
 app = FastAPI(
     title="Readly API",
     description="Convert webpage URLs to PDF and EPUB",
     version="0.1.0"
 )
+
+# Initialize database on startup
+@app.on_event("startup")
+def startup_event():
+    init_db()
 
 # Allow frontend to call this API
 app.add_middleware(
@@ -119,6 +137,26 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                     "title": result["title"]
                 }
 
+                # Get file sizes
+                pdf_size = os.path.getsize(result["pdf_path"]) if os.path.exists(result["pdf_path"]) else None
+                epub_size = os.path.getsize(result["epub_path"]) if os.path.exists(result["epub_path"]) else None
+
+                # Log successful conversion to database
+                log_conversion(
+                    job_id=job_id,
+                    url=url,
+                    title=result["title"],
+                    status="success",
+                    viewport_width=viewport_width,
+                    viewport_height=viewport_height,
+                    page_size=result["page_size"],
+                    pdf_path=result["pdf_path"],
+                    epub_path=result["epub_path"],
+                    pdf_size_bytes=pdf_size,
+                    epub_size_bytes=epub_size,
+                    conversion_time=result["conversion_time"]
+                )
+
                 # Send final event with download URLs and extra info
                 final_data = json.dumps({
                     "progress": 100,
@@ -136,6 +174,17 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                 yield f"data: {final_data}\n\n"
 
         except Exception as e:
+            # Log failed conversion to database
+            job_id = str(uuid.uuid4())[:8]
+            log_conversion(
+                job_id=job_id,
+                url=url,
+                status="failed",
+                error_message=str(e),
+                viewport_width=viewport_width,
+                viewport_height=viewport_height
+            )
+
             error_data = json.dumps({
                 "progress": 0,
                 "message": str(e),
@@ -158,10 +207,12 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
 @app.get("/download/{job_id}/{format}")
 def download_file(job_id: str, format: str):
     """Download converted PDF or EPUB file."""
-    if job_id not in conversions:
+    # Try in-memory cache first, then fall back to database
+    job = conversions.get(job_id)
+    if not job:
+        job = get_conversion(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Conversion not found")
-
-    job = conversions[job_id]
 
     if format == "pdf":
         path = job["pdf_path"]
@@ -174,14 +225,50 @@ def download_file(job_id: str, format: str):
     else:
         raise HTTPException(status_code=400, detail="Format must be 'pdf' or 'epub'")
 
-    if not os.path.exists(path):
+    if not path or not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
+
+    # Track download count
+    increment_download(job_id, format)
 
     return FileResponse(
         path=path,
         media_type=media_type,
         filename=filename
     )
+
+
+def verify_admin_password(password: str):
+    """Verify the admin password."""
+    if not ADMIN_PASSWORD:
+        raise HTTPException(status_code=500, detail="Admin password not configured")
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+
+@app.get("/admin/dashboard", response_class=HTMLResponse)
+def admin_dashboard(password: str = ""):
+    """Admin dashboard with conversion statistics."""
+    verify_admin_password(password)
+
+    template = jinja_env.get_template("dashboard.html")
+    html = template.render(
+        stats=get_stats(),
+        recent=get_recent(limit=50),
+        env=ENVIRONMENT
+    )
+    return HTMLResponse(content=html)
+
+
+@app.get("/admin/stats")
+def admin_stats(password: str = ""):
+    """API endpoint for conversion statistics."""
+    verify_admin_password(password)
+
+    return {
+        "stats": get_stats(),
+        "recent": get_recent(limit=20)
+    }
 
 
 if __name__ == "__main__":
