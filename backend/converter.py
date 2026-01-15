@@ -54,52 +54,28 @@ class WebConverter:
             "title": safe_title
         }
 
-    def _calculate_page_size(self, screen_width: int, screen_height: int) -> dict:
+    def _calculate_page_size(self, viewport_width: int, viewport_height: int) -> dict:
         """
-        Calculate PDF page size to match the device's physical screen dimensions.
-        This ensures the PDF looks the same as on the original device.
+        Calculate PDF page size from CSS viewport dimensions.
 
-        We estimate physical size from pixel density:
-        - Most modern phones: ~460 PPI (iPhone 14 Pro: 460 PPI, ~71mm wide)
-        - Tablets: ~260 PPI
-        - Laptops: ~220 PPI (MacBook Pro: 254 PPI)
+        Uses a standard conversion: 1 CSS pixel ≈ 0.264mm (96 DPI standard)
+        This ensures the PDF looks the same as on the user's device.
 
         Returns dict with width and height in mm.
         """
-        # Assume high-DPI mobile device (~460 PPI) as default
-        # This matches iPhone 14 Pro and similar devices
-        # 1 inch = 25.4mm, so mm = pixels / PPI * 25.4
-
-        # Use 460 PPI for mobile-like dimensions (pixels > 1000 on short side typically means phone/tablet)
-        # This gives iPhone 14 Pro (1179x2556): ~65mm x 141mm
-        ppi = 460
+        # Standard CSS pixel to mm conversion (96 DPI = 0.264mm per pixel)
+        px_to_mm = 0.264
 
         # Ensure portrait orientation
-        if screen_width > screen_height:
-            screen_width, screen_height = screen_height, screen_width
+        if viewport_width > viewport_height:
+            viewport_width, viewport_height = viewport_height, viewport_width
 
         # Calculate physical dimensions
-        width_mm = (screen_width / ppi) * 25.4
-        height_mm = (screen_height / ppi) * 25.4
+        width_mm = viewport_width * px_to_mm
+        height_mm = viewport_height * px_to_mm
 
-        # Set reasonable bounds for readability
-        min_width_mm = 60   # Minimum readable width
-        max_width_mm = 120  # Maximum practical width for mobile reading
-        max_height_mm = 200 # Cap height for very tall screens
-
-        # Clamp width to reasonable bounds
-        if width_mm < min_width_mm:
-            # Scale up proportionally
-            scale = min_width_mm / width_mm
-            width_mm = min_width_mm
-            height_mm *= scale
-        elif width_mm > max_width_mm:
-            # Scale down proportionally
-            scale = max_width_mm / width_mm
-            width_mm = max_width_mm
-            height_mm *= scale
-
-        # Cap height
+        # Cap height to avoid extremely long pages
+        max_height_mm = 250
         if height_mm > max_height_mm:
             height_mm = max_height_mm
 
@@ -108,7 +84,7 @@ class WebConverter:
             "height": f"{height_mm:.0f}mm"
         }
 
-    async def convert_with_progress(self, url: str, screen_width: int = 1170, screen_height: int = 2532):
+    async def convert_with_progress(self, url: str, viewport_width: int = 430, viewport_height: int = 932):
         """
         Convert a URL to both PDF and EPUB with progress updates.
         Yields progress dict: {"progress": 0-100, "message": "status"}
@@ -116,24 +92,31 @@ class WebConverter:
 
         Args:
             url: The webpage URL to convert
-            screen_width: User's screen width in pixels (default: iPhone 14 Pro)
-            screen_height: User's screen height in pixels (default: iPhone 14 Pro)
+            viewport_width: User's CSS viewport width (default: iPhone 16 Pro Max)
+            viewport_height: User's CSS viewport height (default: iPhone 16 Pro Max)
         """
         start_time = time.time()
 
-        # Calculate dynamic page size
-        page_size = self._calculate_page_size(screen_width, screen_height)
+        # Ensure portrait orientation for viewport
+        if viewport_width > viewport_height:
+            viewport_width, viewport_height = viewport_height, viewport_width
+
+        # Calculate PDF page size from viewport
+        page_size = self._calculate_page_size(viewport_width, viewport_height)
 
         yield {"progress": 5, "message": "Starting conversion..."}
 
         async with async_playwright() as p:
-            # Use iPhone device emulation (WeChat blocks desktop browsers)
-            iphone = p.devices["iPhone 14 Pro"]
-
             browser = await p.chromium.launch()
+
+            # Use custom viewport matching user's device, with mobile user agent
             context = await browser.new_context(
-                **iphone,
-                locale="zh-CN"
+                viewport={"width": viewport_width, "height": viewport_height},
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                locale="zh-CN",
+                device_scale_factor=3,
+                is_mobile=True,
+                has_touch=True,
             )
             page = await context.new_page()
 
@@ -257,7 +240,7 @@ class WebConverter:
             "epub_path": epub_path,
             "title": safe_title,
             "source_url": url,
-            "screen_dimensions": f"{screen_width}x{screen_height}",
+            "viewport_dimensions": f"{viewport_width}x{viewport_height}",
             "page_size": f"{page_size['width']} x {page_size['height']}",
             "conversion_time": round(conversion_time, 1)
         }}

@@ -83,22 +83,22 @@ async def convert_url(request: ConvertRequest):
 
 
 @app.get("/convert/stream")
-async def convert_url_stream(url: str, screen_width: int = 1170, screen_height: int = 2532):
+async def convert_url_stream(url: str, viewport_width: int = 430, viewport_height: int = 932):
     """
     Convert a webpage URL to PDF and EPUB with Server-Sent Events progress.
     Returns SSE stream with progress updates.
 
     Args:
         url: The webpage URL to convert
-        screen_width: User's screen width in pixels (default: iPhone 14 Pro)
-        screen_height: User's screen height in pixels (default: iPhone 14 Pro)
+        viewport_width: User's CSS viewport width (default: iPhone 16 Pro Max)
+        viewport_height: User's CSS viewport height (default: iPhone 16 Pro Max)
     """
     async def event_generator():
         try:
             converter = WebConverter()
             result = None
 
-            async for progress in converter.convert_with_progress(url, screen_width, screen_height):
+            async for progress in converter.convert_with_progress(url, viewport_width, viewport_height):
                 # Check if this is the final message with result
                 if "result" in progress:
                     result = progress["result"]
@@ -129,7 +129,7 @@ async def convert_url_stream(url: str, screen_width: int = 1170, screen_height: 
                     "pdf_url": f"/download/{job_id}/pdf",
                     "epub_url": f"/download/{job_id}/epub",
                     "source_url": result["source_url"],
-                    "screen_dimensions": result["screen_dimensions"],
+                    "viewport_dimensions": result["viewport_dimensions"],
                     "page_size": result["page_size"],
                     "conversion_time": result["conversion_time"]
                 })
