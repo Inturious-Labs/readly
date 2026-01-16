@@ -170,12 +170,26 @@
             word-wrap: break-word;
         }
 
+        .job-url-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
         .job-url {
             font-size: 12px;
             color: #999;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .job-time {
+            font-size: 11px;
+            color: #aaa;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .job-downloads {
@@ -250,12 +264,6 @@
         .download-btn:hover {
             transform: translateY(-1px);
             opacity: 0.9;
-        }
-
-        .job-meta {
-            font-size: 11px;
-            color: #aaa;
-            margin-top: 8px;
         }
 
         .empty-state {
@@ -503,7 +511,8 @@
                 if (isConverting) statusIcon = '<div class="spinner"></div>';
 
                 const title = job.title || 'Converting...';
-                const displayUrl = job.url.length > 60 ? job.url.substring(0, 60) + '...' : job.url;
+                const displayUrl = job.url.length > 50 ? job.url.substring(0, 50) + '...' : job.url;
+                const timeAgo = job.createdAt ? formatTime(job.createdAt) : '';
 
                 // Format file sizes
                 const pdfSize = job.pdfSize ? (job.pdfSize / 1048576).toFixed(1) + ' MB' : '';
@@ -515,7 +524,10 @@
                             <div class="job-status-icon">${statusIcon}</div>
                             <div class="job-info">
                                 <div class="job-title">${escapeHtml(title)}</div>
-                                <div class="job-url">${escapeHtml(displayUrl)}</div>
+                                <div class="job-url-row">
+                                    <span class="job-url">${escapeHtml(displayUrl)}</span>
+                                    ${timeAgo ? `<span class="job-time">${timeAgo}</span>` : ''}
+                                </div>
                             </div>
                 `;
 
@@ -547,10 +559,6 @@
 
                 if (isError) {
                     html += `<div class="job-error">${escapeHtml(job.message || 'Conversion failed')}</div>`;
-                }
-
-                if (job.createdAt) {
-                    html += `<div class="job-meta">${formatTime(job.createdAt)}</div>`;
                 }
 
                 html += '</div>';
