@@ -147,9 +147,8 @@
 
         .job-header {
             display: flex;
-            align-items: flex-start;
+            align-items: center;
             gap: 12px;
-            margin-bottom: 8px;
         }
 
         .job-status-icon {
@@ -179,6 +178,29 @@
             text-overflow: ellipsis;
         }
 
+        .job-downloads {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .job-download-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .job-download-col .download-btn {
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .job-file-size {
+            font-size: 11px;
+            color: #999;
+        }
+
         .job-progress {
             height: 4px;
             background: #e0e0e0;
@@ -204,12 +226,6 @@
             font-size: 13px;
             color: #e74c3c;
             margin-bottom: 8px;
-        }
-
-        .job-actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
         }
 
         .download-btn {
@@ -489,6 +505,10 @@
                 const title = job.title || 'Converting...';
                 const displayUrl = job.url.length > 60 ? job.url.substring(0, 60) + '...' : job.url;
 
+                // Format file sizes
+                const pdfSize = job.pdfSize ? (job.pdfSize / 1048576).toFixed(1) + ' MB' : '';
+                const epubSize = job.epubSize ? (job.epubSize / 1048576).toFixed(1) + ' MB' : '';
+
                 html += `
                     <div class="job-item ${isConverting ? 'converting' : ''} ${isError ? 'error' : ''}" data-id="${job.tempId}">
                         <div class="job-header">
@@ -497,8 +517,24 @@
                                 <div class="job-title">${escapeHtml(title)}</div>
                                 <div class="job-url">${escapeHtml(displayUrl)}</div>
                             </div>
-                        </div>
                 `;
+
+                if (isComplete && job.pdfUrl && job.epubUrl) {
+                    html += `
+                            <div class="job-downloads">
+                                <div class="job-download-col">
+                                    <a class="download-btn pdf" href="${API_URL}${job.pdfUrl}" download>PDF</a>
+                                    <span class="job-file-size">${pdfSize}</span>
+                                </div>
+                                <div class="job-download-col">
+                                    <a class="download-btn epub" href="${API_URL}${job.epubUrl}" download>EPUB</a>
+                                    <span class="job-file-size">${epubSize}</span>
+                                </div>
+                            </div>
+                    `;
+                }
+
+                html += `</div>`; // close job-header
 
                 if (isConverting) {
                     html += `
@@ -511,15 +547,6 @@
 
                 if (isError) {
                     html += `<div class="job-error">${escapeHtml(job.message || 'Conversion failed')}</div>`;
-                }
-
-                if (isComplete && job.pdfUrl && job.epubUrl) {
-                    html += `
-                        <div class="job-actions">
-                            <a class="download-btn pdf" href="${API_URL}${job.pdfUrl}" download>PDF</a>
-                            <a class="download-btn epub" href="${API_URL}${job.epubUrl}" download>EPUB</a>
-                        </div>
-                    `;
                 }
 
                 if (job.createdAt) {
@@ -569,6 +596,8 @@
                             message: job.error_message,
                             pdfUrl: job.pdf_url,
                             epubUrl: job.epub_url,
+                            pdfSize: job.pdf_size_bytes,
+                            epubSize: job.epub_size_bytes,
                             createdAt: job.created_at
                         };
                     }
