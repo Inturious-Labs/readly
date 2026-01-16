@@ -16,7 +16,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             padding: 20px;
         }
@@ -25,9 +25,10 @@
             background: white;
             border-radius: 16px;
             padding: 40px;
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            margin-top: 40px;
         }
 
         h1 {
@@ -90,100 +91,136 @@
             transform: none;
         }
 
-        /* Progress bar styles */
-        .progress-container {
-            display: none;
-            width: 100%;
-            height: 48px;
-            background: #e0e0e0;
-            border-radius: 8px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .progress-container.active {
-            display: block;
-        }
-
-        .progress-fill {
-            height: 100%;
-            width: 0%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 8px;
-            transition: width 0.3s ease-out;
-        }
-
-        .progress-text {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 16px;
-            font-weight: 600;
-            color: white;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-            z-index: 1;
-        }
-
-        .milestone {
+        .rate-limit-info {
             margin-top: 12px;
-            padding: 10px 14px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            font-size: 14px;
-            color: #666;
-            display: none;
+            font-size: 13px;
+            color: #999;
             text-align: center;
         }
 
-        .milestone.active {
-            display: block;
+        .rate-limit-info.warning {
+            color: #e67e22;
         }
 
-        .status {
-            margin-top: 20px;
+        .rate-limit-info.error {
+            color: #e74c3c;
+        }
+
+        /* Job list styles */
+        .job-list {
+            margin-top: 30px;
+        }
+
+        .job-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .job-list-header h2 {
+            font-size: 1.1rem;
+            color: #333;
+        }
+
+        .job-count {
+            font-size: 13px;
+            color: #999;
+        }
+
+        .job-item {
+            background: #f8f9fa;
+            border-radius: 12px;
             padding: 16px;
-            border-radius: 8px;
-            display: none;
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .status.loading {
-            display: block;
+        .job-item.converting {
             background: #f0f4ff;
-            color: #667eea;
         }
 
-        .status.success {
-            display: block;
-            background: #f0fff4;
-            color: #22863a;
-        }
-
-        .status.error {
-            display: block;
+        .job-item.error {
             background: #fff5f5;
-            color: #d73a49;
         }
 
-        .downloads {
-            margin-top: 20px;
-            display: none;
+        .job-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 8px;
         }
 
-        .downloads.show {
-            display: block;
+        .job-status-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            width: 24px;
+            text-align: center;
+        }
+
+        .job-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .job-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+            word-wrap: break-word;
+        }
+
+        .job-url {
+            font-size: 12px;
+            color: #999;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .job-progress {
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+
+        .job-progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+            transition: width 0.3s ease-out;
+        }
+
+        .job-message {
+            font-size: 13px;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .job-error {
+            font-size: 13px;
+            color: #e74c3c;
+            margin-bottom: 8px;
+        }
+
+        .job-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
         .download-btn {
             display: inline-block;
-            padding: 12px 24px;
-            margin: 8px 8px 8px 0;
-            font-size: 14px;
+            padding: 8px 16px;
+            font-size: 13px;
             font-weight: 600;
             color: white;
             text-decoration: none;
-            border-radius: 8px;
-            transition: transform 0.2s;
+            border-radius: 6px;
+            transition: transform 0.2s, opacity 0.2s;
         }
 
         .download-btn.pdf {
@@ -195,44 +232,39 @@
         }
 
         .download-btn:hover {
-            transform: translateY(-2px);
+            transform: translateY(-1px);
+            opacity: 0.9;
         }
 
-        .article-title {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #333;
+        .job-meta {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 8px;
         }
 
-        .conversion-info {
-            margin-top: 16px;
-            padding: 12px 16px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            font-size: 13px;
-            color: #666;
-        }
-
-        .conversion-info p {
-            margin: 4px 0;
-        }
-
-        .conversion-info .label {
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
             color: #999;
         }
 
-        .conversion-info .value {
-            color: #333;
-            font-weight: 500;
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
         }
 
-        .conversion-info a {
-            color: #667eea;
-            text-decoration: none;
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #667eea;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
         }
 
-        .conversion-info a:hover {
-            text-decoration: underline;
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         footer {
@@ -240,6 +272,26 @@
             text-align: center;
             color: #999;
             font-size: 14px;
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            opacity: 1;
         }
     </style>
 </head>
@@ -260,32 +312,19 @@
                 >
             </div>
             <button type="submit" id="submitBtn">Convert <span id="envLabel"></span></button>
-            <div id="progressContainer" class="progress-container">
-                <div id="progressFill" class="progress-fill"></div>
-                <span id="progressText" class="progress-text">0%</span>
-            </div>
+            <div id="rateLimitInfo" class="rate-limit-info"></div>
         </form>
 
-        <div id="milestone" class="milestone"></div>
-
-        <div id="status" class="status"></div>
-
-        <div id="downloads" class="downloads">
-            <p class="article-title" id="articleTitle"></p>
-            <a id="pdfLink" class="download-btn pdf" href="#" download>Download PDF</a>
-            <a id="epubLink" class="download-btn epub" href="#" download>Download EPUB</a>
-            <div class="conversion-info">
-                <p><span class="label">Source:</span> <a id="sourceUrl" href="#" target="_blank"></a></p>
-                <p><span class="label">Viewport:</span> <span id="viewportDimensions" class="value"></span></p>
-                <p><span class="label">PDF size:</span> <span id="pageSize" class="value"></span></p>
-                <p><span class="label">Time:</span> <span id="conversionTime" class="value"></span></p>
-            </div>
+        <div id="jobList" class="job-list">
+            <!-- Populated dynamically -->
         </div>
 
         <footer>
             Paste any article URL and get PDF + EPUB versions
         </footer>
     </div>
+
+    <div id="toast" class="toast"></div>
 
     <script>
         // Backend API URL - auto-detect based on environment
@@ -311,113 +350,296 @@
         // Show (dev) indicator only when using dev backend
         document.getElementById('envLabel').textContent = IS_LOCAL ? '(dev)' : '';
 
+        // Device fingerprint generation
+        function hashCode(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return Math.abs(hash);
+        }
+
+        function getDeviceId() {
+            let deviceId = localStorage.getItem('readly_device_id');
+            if (!deviceId) {
+                const data = [
+                    navigator.userAgent,
+                    screen.width + 'x' + screen.height,
+                    Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    navigator.language
+                ].join('|');
+                deviceId = hashCode(data).toString(16);
+                localStorage.setItem('readly_device_id', deviceId);
+            }
+            return deviceId;
+        }
+
+        const deviceId = getDeviceId();
+
+        // State management
+        const jobs = {}; // { tempId: { url, status, progress, message, title, pdfUrl, epubUrl, jobId, eventSource, createdAt } }
+        let rateLimit = { remaining: 10, max_per_day: 10 };
+
+        // DOM elements
         const form = document.getElementById('convertForm');
         const submitBtn = document.getElementById('submitBtn');
-        const progressContainer = document.getElementById('progressContainer');
-        const progressFill = document.getElementById('progressFill');
-        const progressText = document.getElementById('progressText');
-        const milestone = document.getElementById('milestone');
-        const status = document.getElementById('status');
-        const downloads = document.getElementById('downloads');
-        const articleTitle = document.getElementById('articleTitle');
-        const pdfLink = document.getElementById('pdfLink');
-        const epubLink = document.getElementById('epubLink');
-        const sourceUrl = document.getElementById('sourceUrl');
-        const viewportDimensions = document.getElementById('viewportDimensions');
-        const pageSize = document.getElementById('pageSize');
-        const conversionTime = document.getElementById('conversionTime');
+        const urlInput = document.getElementById('url');
+        const jobListContainer = document.getElementById('jobList');
+        const rateLimitInfo = document.getElementById('rateLimitInfo');
+        const toast = document.getElementById('toast');
 
-        function showStatus(message, type) {
-            status.textContent = message;
-            status.className = 'status ' + type;
+        function showToast(message, duration = 3000) {
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), duration);
         }
 
-        function hideStatus() {
-            status.className = 'status';
+        function updateRateLimitDisplay() {
+            if (rateLimit.remaining <= 0) {
+                rateLimitInfo.textContent = 'Daily limit reached (10/day). Try again tomorrow.';
+                rateLimitInfo.className = 'rate-limit-info error';
+                submitBtn.disabled = true;
+            } else if (rateLimit.remaining <= 3) {
+                rateLimitInfo.textContent = `${rateLimit.remaining} conversion${rateLimit.remaining === 1 ? '' : 's'} remaining today`;
+                rateLimitInfo.className = 'rate-limit-info warning';
+                submitBtn.disabled = false;
+            } else {
+                rateLimitInfo.textContent = `${rateLimit.remaining} conversions remaining today`;
+                rateLimitInfo.className = 'rate-limit-info';
+                submitBtn.disabled = false;
+            }
         }
 
-        function updateProgress(percent, message) {
-            progressFill.style.width = percent + '%';
-            progressText.textContent = percent + '%';
-            milestone.textContent = message;
-            milestone.classList.add('active');
+        function formatTime(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return date.toLocaleDateString();
         }
 
-        function resetUI() {
-            submitBtn.style.display = 'block';
-            progressContainer.classList.remove('active');
-            progressFill.style.width = '0%';
-            progressText.textContent = '0%';
-            milestone.classList.remove('active');
-            milestone.textContent = '';
+        function renderJobList() {
+            const jobArray = Object.values(jobs).sort((a, b) => {
+                // Sort by createdAt descending (newest first)
+                const aTime = a.createdAt ? new Date(a.createdAt).getTime() : Date.now();
+                const bTime = b.createdAt ? new Date(b.createdAt).getTime() : Date.now();
+                return bTime - aTime;
+            });
+
+            if (jobArray.length === 0) {
+                jobListContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📚</div>
+                        <p>No conversions yet.<br>Paste a URL above to get started!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="job-list-header">
+                    <h2>Recent Conversions</h2>
+                    <span class="job-count">${jobArray.length} article${jobArray.length === 1 ? '' : 's'}</span>
+                </div>
+            `;
+
+            for (const job of jobArray) {
+                const isConverting = job.status === 'converting';
+                const isError = job.status === 'error';
+                const isComplete = job.status === 'success';
+
+                let statusIcon = '⏳';
+                if (isComplete) statusIcon = '✅';
+                if (isError) statusIcon = '❌';
+                if (isConverting) statusIcon = '<div class="spinner"></div>';
+
+                const title = job.title || 'Converting...';
+                const displayUrl = job.url.length > 60 ? job.url.substring(0, 60) + '...' : job.url;
+
+                html += `
+                    <div class="job-item ${isConverting ? 'converting' : ''} ${isError ? 'error' : ''}" data-id="${job.tempId}">
+                        <div class="job-header">
+                            <div class="job-status-icon">${statusIcon}</div>
+                            <div class="job-info">
+                                <div class="job-title">${escapeHtml(title)}</div>
+                                <div class="job-url">${escapeHtml(displayUrl)}</div>
+                            </div>
+                        </div>
+                `;
+
+                if (isConverting) {
+                    html += `
+                        <div class="job-progress">
+                            <div class="job-progress-fill" style="width: ${job.progress || 0}%"></div>
+                        </div>
+                        <div class="job-message">${escapeHtml(job.message || 'Starting...')}</div>
+                    `;
+                }
+
+                if (isError) {
+                    html += `<div class="job-error">${escapeHtml(job.message || 'Conversion failed')}</div>`;
+                }
+
+                if (isComplete && job.pdfUrl && job.epubUrl) {
+                    html += `
+                        <div class="job-actions">
+                            <a class="download-btn pdf" href="${API_URL}${job.pdfUrl}" download>PDF</a>
+                            <a class="download-btn epub" href="${API_URL}${job.epubUrl}" download>EPUB</a>
+                        </div>
+                    `;
+                }
+
+                if (job.createdAt) {
+                    html += `<div class="job-meta">${formatTime(job.createdAt)}</div>`;
+                }
+
+                html += '</div>';
+            }
+
+            jobListContainer.innerHTML = html;
         }
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
-            const url = document.getElementById('url').value;
+        async function loadExistingJobs() {
+            try {
+                const response = await fetch(`${API_URL}/jobs?device_id=${deviceId}`);
+                if (response.ok) {
+                    const data = await response.json();
 
-            // Reset UI and show progress bar
-            downloads.classList.remove('show');
-            hideStatus();
-            submitBtn.style.display = 'none';
-            progressContainer.classList.add('active');
-            updateProgress(0, 'Starting...');
+                    // Update rate limit
+                    rateLimit = data.rate_limit;
+                    updateRateLimitDisplay();
 
-            // Get user's CSS viewport dimensions for matching PDF output
+                    // Load jobs
+                    for (const job of data.jobs) {
+                        jobs[job.job_id] = {
+                            tempId: job.job_id,
+                            jobId: job.job_id,
+                            url: job.url,
+                            title: job.title,
+                            status: job.status === 'success' ? 'success' : 'error',
+                            message: job.error_message,
+                            pdfUrl: job.pdf_url,
+                            epubUrl: job.epub_url,
+                            createdAt: job.created_at
+                        };
+                    }
+
+                    renderJobList();
+                }
+            } catch (error) {
+                console.error('Failed to load existing jobs:', error);
+            }
+        }
+
+        function startConversion(url) {
+            const tempId = 'temp_' + Date.now();
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
 
-            // Use Server-Sent Events for real-time progress
+            // Add job to state
+            jobs[tempId] = {
+                tempId,
+                url,
+                status: 'converting',
+                progress: 0,
+                message: 'Starting...',
+                createdAt: new Date().toISOString()
+            };
+
+            renderJobList();
+
+            // Decrement local rate limit
+            rateLimit.remaining = Math.max(0, rateLimit.remaining - 1);
+            updateRateLimitDisplay();
+
+            // Start SSE connection
             const eventSource = new EventSource(
-                `${API_URL}/convert/stream?url=${encodeURIComponent(url)}&viewport_width=${viewportWidth}&viewport_height=${viewportHeight}`
+                `${API_URL}/convert/stream?url=${encodeURIComponent(url)}&viewport_width=${viewportWidth}&viewport_height=${viewportHeight}&device_id=${deviceId}`
             );
+
+            jobs[tempId].eventSource = eventSource;
 
             eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data);
 
-                if (data.error) {
-                    // Handle error
+                if (data.rate_limited) {
                     eventSource.close();
-                    showStatus(`Error: ${data.message}`, 'error');
-                    resetUI();
+                    jobs[tempId].status = 'error';
+                    jobs[tempId].message = data.message;
+                    renderJobList();
+                    showToast('Rate limit exceeded');
                     return;
                 }
 
-                // Update progress bar and milestone
-                updateProgress(data.progress, data.message);
+                if (data.error) {
+                    eventSource.close();
+                    jobs[tempId].status = 'error';
+                    jobs[tempId].message = data.message;
+                    renderJobList();
+                    showToast('Conversion failed');
+                    return;
+                }
+
+                // Update progress
+                jobs[tempId].progress = data.progress;
+                jobs[tempId].message = data.message;
 
                 if (data.complete) {
-                    // Conversion complete
                     eventSource.close();
-
-                    // Show download links
-                    articleTitle.textContent = data.title;
-                    pdfLink.href = `${API_URL}${data.pdf_url}`;
-                    epubLink.href = `${API_URL}${data.epub_url}`;
-
-                    // Display conversion info
-                    sourceUrl.href = data.source_url;
-                    sourceUrl.textContent = data.source_url.length > 50
-                        ? data.source_url.substring(0, 50) + '...'
-                        : data.source_url;
-                    viewportDimensions.textContent = data.viewport_dimensions + ' px';
-                    pageSize.textContent = data.page_size;
-                    conversionTime.textContent = data.conversion_time + ' seconds';
-
-                    downloads.classList.add('show');
-
-                    showStatus('Conversion complete!', 'success');
-                    resetUI();
+                    jobs[tempId].status = 'success';
+                    jobs[tempId].jobId = data.job_id;
+                    jobs[tempId].title = data.title;
+                    jobs[tempId].pdfUrl = data.pdf_url;
+                    jobs[tempId].epubUrl = data.epub_url;
+                    showToast('Conversion complete!');
                 }
+
+                renderJobList();
             };
 
             eventSource.onerror = (error) => {
                 eventSource.close();
-                showStatus('Error: Connection failed. Please try again.', 'error');
-                resetUI();
+                jobs[tempId].status = 'error';
+                jobs[tempId].message = 'Connection failed. Please try again.';
+                renderJobList();
+                showToast('Connection failed');
             };
+        }
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const url = urlInput.value.trim();
+            if (!url) return;
+
+            if (rateLimit.remaining <= 0) {
+                showToast('Daily limit reached');
+                return;
+            }
+
+            startConversion(url);
+            urlInput.value = '';
+            urlInput.focus();
         });
+
+        // Load existing jobs on page load
+        loadExistingJobs();
     </script>
 </body>
 </html>

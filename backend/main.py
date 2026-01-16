@@ -15,7 +15,10 @@ from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, HttpUrl
 
 from converter import WebConverter
-from database import init_db, log_conversion, get_stats, get_recent, increment_download, get_conversion
+from database import (
+    init_db, log_conversion, get_stats, get_recent, increment_download, get_conversion,
+    get_device_jobs, check_rate_limit, get_rate_limit_remaining, cleanup_old_jobs
+)
 
 # Admin password from environment variable
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -33,10 +36,14 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Initialize database on startup
+# Initialize database and cleanup on startup
 @app.on_event("startup")
 def startup_event():
     init_db()
+    # Cleanup jobs older than 7 days
+    deleted = cleanup_old_jobs(days=7)
+    if deleted > 0:
+        print(f"Cleaned up {deleted} old conversion(s)")
 
 # Allow frontend to call this API
 app.add_middleware(
@@ -101,7 +108,7 @@ async def convert_url(request: ConvertRequest):
 
 
 @app.get("/convert/stream")
-async def convert_url_stream(url: str, viewport_width: int = 430, viewport_height: int = 932):
+async def convert_url_stream(url: str, viewport_width: int = 430, viewport_height: int = 932, device_id: str = None):
     """
     Convert a webpage URL to PDF and EPUB with Server-Sent Events progress.
     Returns SSE stream with progress updates.
@@ -110,7 +117,28 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
         url: The webpage URL to convert
         viewport_width: User's CSS viewport width (default: iPhone 16 Pro Max)
         viewport_height: User's CSS viewport height (default: iPhone 16 Pro Max)
+        device_id: Device fingerprint for tracking and rate limiting
     """
+    # Check rate limit if device_id provided
+    if device_id and not check_rate_limit(device_id):
+        async def rate_limit_error():
+            error_data = json.dumps({
+                "progress": 0,
+                "message": "Rate limit exceeded. Maximum 10 conversions per day.",
+                "error": True,
+                "rate_limited": True
+            })
+            yield f"data: {error_data}\n\n"
+        return StreamingResponse(
+            rate_limit_error(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+            }
+        )
+
     async def event_generator():
         try:
             converter = WebConverter()
@@ -154,7 +182,8 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                     epub_path=result["epub_path"],
                     pdf_size_bytes=pdf_size,
                     epub_size_bytes=epub_size,
-                    conversion_time=result["conversion_time"]
+                    conversion_time=result["conversion_time"],
+                    device_id=device_id
                 )
 
                 # Send final event with download URLs and extra info
@@ -182,7 +211,8 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                 status="failed",
                 error_message=str(e),
                 viewport_width=viewport_width,
-                viewport_height=viewport_height
+                viewport_height=viewport_height,
+                device_id=device_id
             )
 
             error_data = json.dumps({
@@ -202,6 +232,32 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
             "X-Accel-Buffering": "no",  # Disable nginx buffering for SSE
         }
     )
+
+
+@app.get("/jobs")
+def get_jobs(device_id: str):
+    """Get all jobs for a specific device."""
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id is required")
+
+    jobs = get_device_jobs(device_id)
+    remaining = get_rate_limit_remaining(device_id)
+
+    # Transform jobs to include download URLs
+    for job in jobs:
+        job["pdf_url"] = f"/download/{job['job_id']}/pdf" if job.get("pdf_path") else None
+        job["epub_url"] = f"/download/{job['job_id']}/epub" if job.get("epub_path") else None
+        # Remove file paths from response (not needed by frontend)
+        job.pop("pdf_path", None)
+        job.pop("epub_path", None)
+
+    return {
+        "jobs": jobs,
+        "rate_limit": {
+            "remaining": remaining,
+            "max_per_day": 10
+        }
+    }
 
 
 @app.get("/download/{job_id}/{format}")

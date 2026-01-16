@@ -53,6 +53,7 @@ def init_db():
         ("epub_downloads", "INTEGER DEFAULT 0"),
         ("pdf_path", "TEXT"),
         ("epub_path", "TEXT"),
+        ("device_id", "TEXT"),
     ]:
         try:
             conn.execute(f"ALTER TABLE conversions ADD COLUMN {column} {col_type}")
@@ -75,15 +76,16 @@ def log_conversion(
     epub_path: str = None,
     pdf_size_bytes: int = None,
     epub_size_bytes: int = None,
-    conversion_time: float = None
+    conversion_time: float = None,
+    device_id: str = None
 ):
     """Log a conversion to the database."""
     conn = get_connection()
     conn.execute("""
         INSERT INTO conversions
-        (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_path, epub_path, pdf_size_bytes, epub_size_bytes, conversion_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_path, epub_path, pdf_size_bytes, epub_size_bytes, conversion_time))
+        (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_path, epub_path, pdf_size_bytes, epub_size_bytes, conversion_time, device_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, url, title, status, error_message, viewport_width, viewport_height, page_size, pdf_path, epub_path, pdf_size_bytes, epub_size_bytes, conversion_time, device_id))
     conn.commit()
     conn.close()
 
@@ -197,3 +199,82 @@ def get_recent(limit: int = 20) -> list:
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+def get_device_jobs(device_id: str, limit: int = 50) -> list:
+    """Get all jobs for a specific device."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT job_id, url, title, status, error_message,
+               pdf_path, epub_path, pdf_size_bytes, epub_size_bytes,
+               conversion_time,
+               datetime(created_at, '+8 hours') as created_at
+        FROM conversions
+        WHERE device_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+    """, (device_id, limit)).fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def check_rate_limit(device_id: str, max_per_day: int = 10) -> bool:
+    """Check if device has exceeded rate limit. Returns True if within limit."""
+    conn = get_connection()
+    # Count conversions in last 24 hours
+    count = conn.execute("""
+        SELECT COUNT(*) FROM conversions
+        WHERE device_id = ?
+        AND created_at >= datetime('now', '-24 hours')
+    """, (device_id,)).fetchone()[0]
+    conn.close()
+
+    return count < max_per_day
+
+
+def get_rate_limit_remaining(device_id: str, max_per_day: int = 10) -> int:
+    """Get number of conversions remaining for device today."""
+    conn = get_connection()
+    count = conn.execute("""
+        SELECT COUNT(*) FROM conversions
+        WHERE device_id = ?
+        AND created_at >= datetime('now', '-24 hours')
+    """, (device_id,)).fetchone()[0]
+    conn.close()
+
+    return max(0, max_per_day - count)
+
+
+def cleanup_old_jobs(days: int = 7) -> int:
+    """Delete jobs and their files older than specified days. Returns count of deleted jobs."""
+    conn = get_connection()
+
+    # Get file paths before deleting
+    rows = conn.execute("""
+        SELECT pdf_path, epub_path FROM conversions
+        WHERE created_at < datetime('now', ? || ' days')
+    """, (f"-{days}",)).fetchall()
+
+    # Delete old files
+    deleted_files = 0
+    for row in rows:
+        for path in [row["pdf_path"], row["epub_path"]]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                    deleted_files += 1
+                except:
+                    pass
+
+    # Delete database records
+    cursor = conn.execute("""
+        DELETE FROM conversions
+        WHERE created_at < datetime('now', ? || ' days')
+    """, (f"-{days}",))
+    deleted_count = cursor.rowcount
+
+    conn.commit()
+    conn.close()
+
+    return deleted_count
