@@ -112,25 +112,33 @@ def get_stats() -> dict:
     """Get aggregated conversion statistics."""
     conn = get_connection()
 
-    now = datetime.now()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = today_start - timedelta(days=today_start.weekday())
+    # Use UTC+8 for "Today" and "This Week" calculations
+    # SQLite stores UTC, so we calculate UTC+8 boundaries then convert back to UTC
+    from datetime import timezone
+    utc_plus_8 = timezone(timedelta(hours=8))
+    now_local = datetime.now(utc_plus_8)
+    today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start_local = today_start_local - timedelta(days=today_start_local.weekday())
+
+    # Convert to UTC for database comparison
+    today_start_utc = (today_start_local - timedelta(hours=8)).replace(tzinfo=None)
+    week_start_utc = (week_start_local - timedelta(hours=8)).replace(tzinfo=None)
 
     # Total counts
     total = conn.execute("SELECT COUNT(*) FROM conversions").fetchone()[0]
     success = conn.execute("SELECT COUNT(*) FROM conversions WHERE status = 'success'").fetchone()[0]
     failed = conn.execute("SELECT COUNT(*) FROM conversions WHERE status = 'failed'").fetchone()[0]
 
-    # Today counts
+    # Today counts (UTC) - use strftime to match SQLite format (space separator, not T)
     today_total = conn.execute(
         "SELECT COUNT(*) FROM conversions WHERE created_at >= ?",
-        (today_start.isoformat(),)
+        (today_start_utc.strftime("%Y-%m-%d %H:%M:%S"),)
     ).fetchone()[0]
 
-    # This week counts
+    # This week counts (UTC)
     week_total = conn.execute(
         "SELECT COUNT(*) FROM conversions WHERE created_at >= ?",
-        (week_start.isoformat(),)
+        (week_start_utc.strftime("%Y-%m-%d %H:%M:%S"),)
     ).fetchone()[0]
 
     # Average conversion time (successful only)
