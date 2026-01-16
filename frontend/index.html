@@ -253,6 +253,24 @@
             margin-bottom: 12px;
         }
 
+        .show-more-btn {
+            width: 100%;
+            padding: 12px;
+            margin-top: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #667eea;
+            background: #f0f4ff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .show-more-btn:hover {
+            background: #e0e8ff;
+        }
+
         .spinner {
             display: inline-block;
             width: 20px;
@@ -381,6 +399,8 @@
         // State management
         const jobs = {}; // { tempId: { url, status, progress, message, title, pdfUrl, epubUrl, jobId, eventSource, createdAt } }
         let rateLimit = { remaining: 50, max_per_day: 50 };
+        const JOBS_PER_PAGE = 10;
+        let visibleJobCount = JOBS_PER_PAGE;
 
         // DOM elements
         const form = document.getElementById('convertForm');
@@ -446,6 +466,9 @@
                 return;
             }
 
+            const visibleJobs = jobArray.slice(0, visibleJobCount);
+            const hasMore = jobArray.length > visibleJobCount;
+
             let html = `
                 <div class="job-list-header">
                     <h2>Recent Conversions</h2>
@@ -453,7 +476,7 @@
                 </div>
             `;
 
-            for (const job of jobArray) {
+            for (const job of visibleJobs) {
                 const isConverting = job.status === 'converting';
                 const isError = job.status === 'error';
                 const isComplete = job.status === 'success';
@@ -506,7 +529,17 @@
                 html += '</div>';
             }
 
+            if (hasMore) {
+                const remaining = jobArray.length - visibleJobCount;
+                html += `<button class="show-more-btn" onclick="showMoreJobs()">Show ${Math.min(remaining, JOBS_PER_PAGE)} more</button>`;
+            }
+
             jobListContainer.innerHTML = html;
+        }
+
+        function showMoreJobs() {
+            visibleJobCount += JOBS_PER_PAGE;
+            renderJobList();
         }
 
         function escapeHtml(text) {
