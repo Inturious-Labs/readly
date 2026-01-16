@@ -219,7 +219,7 @@ def get_device_jobs(device_id: str, limit: int = 50) -> list:
     return [dict(row) for row in rows]
 
 
-def check_rate_limit(device_id: str, max_per_day: int = 10) -> bool:
+def check_rate_limit(device_id: str, max_per_day: int = 50) -> bool:
     """Check if device has exceeded rate limit. Returns True if within limit."""
     conn = get_connection()
     # Count conversions in last 24 hours
@@ -233,7 +233,7 @@ def check_rate_limit(device_id: str, max_per_day: int = 10) -> bool:
     return count < max_per_day
 
 
-def get_rate_limit_remaining(device_id: str, max_per_day: int = 10) -> int:
+def get_rate_limit_remaining(device_id: str, max_per_day: int = 50) -> int:
     """Get number of conversions remaining for device today."""
     conn = get_connection()
     count = conn.execute("""

@@ -380,7 +380,7 @@
 
         // State management
         const jobs = {}; // { tempId: { url, status, progress, message, title, pdfUrl, epubUrl, jobId, eventSource, createdAt } }
-        let rateLimit = { remaining: 10, max_per_day: 10 };
+        let rateLimit = { remaining: 50, max_per_day: 50 };
 
         // DOM elements
         const form = document.getElementById('convertForm');
@@ -398,7 +398,7 @@
 
         function updateRateLimitDisplay() {
             if (rateLimit.remaining <= 0) {
-                rateLimitInfo.textContent = 'Daily limit reached (10/day). Try again tomorrow.';
+                rateLimitInfo.textContent = `Daily limit reached (${rateLimit.max_per_day}/day). Try again tomorrow.`;
                 rateLimitInfo.className = 'rate-limit-info error';
                 submitBtn.disabled = true;
             } else if (rateLimit.remaining <= 3) {

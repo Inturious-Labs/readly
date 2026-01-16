@@ -23,6 +23,9 @@ from database import (
 # Admin password from environment variable
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
+# Rate limit: max conversions per device per day
+RATE_LIMIT_PER_DAY = 50
+
 # Environment indicator (development or production)
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
 
@@ -120,11 +123,11 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
         device_id: Device fingerprint for tracking and rate limiting
     """
     # Check rate limit if device_id provided
-    if device_id and not check_rate_limit(device_id):
+    if device_id and not check_rate_limit(device_id, RATE_LIMIT_PER_DAY):
         async def rate_limit_error():
             error_data = json.dumps({
                 "progress": 0,
-                "message": "Rate limit exceeded. Maximum 10 conversions per day.",
+                "message": f"Rate limit exceeded. Maximum {RATE_LIMIT_PER_DAY} conversions per day.",
                 "error": True,
                 "rate_limited": True
             })
@@ -241,7 +244,7 @@ def get_jobs(device_id: str):
         raise HTTPException(status_code=400, detail="device_id is required")
 
     jobs = get_device_jobs(device_id)
-    remaining = get_rate_limit_remaining(device_id)
+    remaining = get_rate_limit_remaining(device_id, RATE_LIMIT_PER_DAY)
 
     # Transform jobs to include download URLs
     for job in jobs:
@@ -255,7 +258,7 @@ def get_jobs(device_id: str):
         "jobs": jobs,
         "rate_limit": {
             "remaining": remaining,
-            "max_per_day": 10
+            "max_per_day": RATE_LIMIT_PER_DAY
         }
     }
 
