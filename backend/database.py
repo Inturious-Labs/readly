@@ -201,8 +201,8 @@ def get_recent(limit: int = 20) -> list:
     return [dict(row) for row in rows]
 
 
-def get_device_jobs(device_id: str, limit: int = 50) -> list:
-    """Get all jobs for a specific device."""
+def get_device_jobs(device_id: str, days: int = 7, limit: int = 50) -> list:
+    """Get jobs for a specific device within the last N days."""
     conn = get_connection()
     rows = conn.execute("""
         SELECT job_id, url, title, status, error_message,
@@ -211,9 +211,10 @@ def get_device_jobs(device_id: str, limit: int = 50) -> list:
                datetime(created_at, '+8 hours') as created_at
         FROM conversions
         WHERE device_id = ?
+        AND created_at >= datetime('now', ? || ' days')
         ORDER BY created_at DESC
         LIMIT ?
-    """, (device_id, limit)).fetchall()
+    """, (device_id, f"-{days}", limit)).fetchall()
     conn.close()
 
     return [dict(row) for row in rows]

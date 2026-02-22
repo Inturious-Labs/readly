@@ -19,7 +19,7 @@ from pydantic import BaseModel, HttpUrl
 from converter import WebConverter
 from database import (
     init_db, log_conversion, get_stats, get_recent, increment_download, get_conversion,
-    get_device_jobs, check_rate_limit, get_rate_limit_remaining, cleanup_old_jobs,
+    get_device_jobs, check_rate_limit, get_rate_limit_remaining,
     get_engagement_stats, get_top_domains, get_daily_trend, get_error_breakdown
 )
 
@@ -42,14 +42,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Initialize database and cleanup on startup
+# Initialize database on startup
 @app.on_event("startup")
 def startup_event():
     init_db()
-    # Cleanup jobs older than 7 days
-    deleted = cleanup_old_jobs(days=7)
-    if deleted > 0:
-        print(f"Cleaned up {deleted} old conversion(s)")
 
 # Allow frontend to call this API
 app.add_middleware(
