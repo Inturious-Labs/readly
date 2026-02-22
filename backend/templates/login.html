@@ -38,18 +38,35 @@
             color: #666;
             margin-bottom: 6px;
         }
-        input[type="password"] {
+        .password-field {
+            position: relative;
+            margin-bottom: 16px;
+        }
+        .password-field input {
             width: 100%;
-            padding: 10px 12px;
+            padding: 10px 40px 10px 12px;
             border: 1px solid #ddd;
             border-radius: 6px;
             font-size: 15px;
-            margin-bottom: 16px;
         }
-        input[type="password"]:focus {
+        .password-field input:focus {
             outline: none;
             border-color: #667eea;
         }
+        .toggle-pw {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 4px;
+            width: auto;
+        }
+        .toggle-pw:hover { color: #667eea; background: none; }
         button {
             width: 100%;
             padding: 10px;
@@ -78,9 +95,25 @@
         {% endif %}
         <form method="POST" action="/admin/login">
             <label for="password">Password</label>
-            <input type="password" id="password" name="password" autofocus required>
+            <div class="password-field">
+                <input type="password" id="password" name="password" autofocus required>
+                <button type="button" class="toggle-pw" onclick="togglePassword()">Show</button>
+            </div>
             <button type="submit">Sign in</button>
         </form>
     </div>
+    <script>
+        function togglePassword() {
+            const input = document.getElementById('password');
+            const btn = document.querySelector('.toggle-pw');
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = 'Hide';
+            } else {
+                input.type = 'password';
+                btn.textContent = 'Show';
+            }
+        }
+    </script>
 </body>
 </html>
