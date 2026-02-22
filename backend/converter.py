@@ -1,5 +1,6 @@
 """
 Web page converter - scrapes URLs and generates PDF/EPUB.
+Supports WeChat articles natively and any generic website.
 """
 
 import base64
@@ -19,6 +20,12 @@ from playwright.async_api import async_playwright
 
 # Persistent output directory for converted files
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
+
+
+def _is_wechat_url(url: str) -> bool:
+    """Check if a URL is a WeChat article."""
+    hostname = urlparse(url).hostname or ""
+    return "weixin.qq.com" in hostname or "wechat.com" in hostname
 
 
 class WebConverter:
@@ -102,40 +109,57 @@ class WebConverter:
         Yields progress dict: {"progress": 0-100, "message": "status"}
         Final yield includes the result data.
 
+        Adapts rendering strategy based on URL type:
+        - WeChat: mobile emulation, Chinese fonts, viewport-sized PDF
+        - Generic: desktop rendering, site's own fonts, A4 PDF
+
         Args:
             url: The webpage URL to convert
             viewport_width: User's CSS viewport width (default: iPhone 16 Pro Max)
             viewport_height: User's CSS viewport height (default: iPhone 16 Pro Max)
         """
         start_time = time.time()
+        is_wechat = _is_wechat_url(url)
 
-        # Ensure portrait orientation for viewport
-        if viewport_width > viewport_height:
-            viewport_width, viewport_height = viewport_height, viewport_width
-
-        # Handle unusual aspect ratios (e.g., foldable phones in square-ish mode)
-        aspect_ratio = viewport_height / viewport_width
-        if aspect_ratio < 1.3:
-            aspect_ratio = 19.5 / 9  # Standard phone ratio
-            viewport_height = int(viewport_width * aspect_ratio)
-
-        # Calculate PDF page size from viewport
-        page_size = self._calculate_page_size(viewport_width, viewport_height)
+        if is_wechat:
+            # WeChat: use mobile viewport from user's device
+            if viewport_width > viewport_height:
+                viewport_width, viewport_height = viewport_height, viewport_width
+            aspect_ratio = viewport_height / viewport_width
+            if aspect_ratio < 1.3:
+                aspect_ratio = 19.5 / 9
+                viewport_height = int(viewport_width * aspect_ratio)
+            page_size = self._calculate_page_size(viewport_width, viewport_height)
+        else:
+            # Generic: A4 page, desktop viewport
+            page_size = {"width": "210mm", "height": "297mm"}
+            viewport_width = 1280
+            viewport_height = 800
 
         yield {"progress": 5, "message": "Starting conversion..."}
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
 
-            # Use custom viewport matching user's device, with mobile user agent
-            context = await browser.new_context(
-                viewport={"width": viewport_width, "height": viewport_height},
-                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-                locale="zh-CN",
-                device_scale_factor=3,
-                is_mobile=True,
-                has_touch=True,
-            )
+            if is_wechat:
+                # WeChat: mobile emulation (WeChat blocks desktop browsers)
+                context = await browser.new_context(
+                    viewport={"width": viewport_width, "height": viewport_height},
+                    user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                    locale="zh-CN",
+                    device_scale_factor=3,
+                    is_mobile=True,
+                    has_touch=True,
+                )
+            else:
+                # Generic: desktop browser
+                context = await browser.new_context(
+                    viewport={"width": viewport_width, "height": viewport_height},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    locale="en-US",
+                    device_scale_factor=1,
+                )
+
             page = await context.new_page()
 
             yield {"progress": 10, "message": "Loading page..."}
@@ -189,51 +213,107 @@ class WebConverter:
             if not title:
                 title = "Untitled"
 
-            # Get HTML content
+            # Get HTML content (before DOM modifications, for EPUB extraction)
             html = await page.content()
 
-            # Use JavaScript to modify DOM for PDF output
-            await page.evaluate("""
-                () => {
-                    // Inject Noto fonts for consistent Chinese rendering
-                    const style = document.createElement('style');
-                    style.textContent = `
-                        * {
-                            font-family: "Noto Serif SC", "Noto Serif", "Noto Sans SC", serif !important;
-                        }
-                    `;
-                    document.head.appendChild(style);
+            if is_wechat:
+                # WeChat: inject Chinese fonts and hide WeChat UI chrome
+                await page.evaluate("""
+                    () => {
+                        const style = document.createElement('style');
+                        style.textContent = `
+                            * {
+                                font-family: "Noto Serif SC", "Noto Serif", "Noto Sans SC", serif !important;
+                            }
+                        `;
+                        document.head.appendChild(style);
 
-                    // Make images fit the page width
-                    const images = document.querySelectorAll('img');
-                    images.forEach(img => {
-                        img.style.maxWidth = '100%';
-                        img.style.height = 'auto';
-                    });
-
-                    // Hide unnecessary UI elements
-                    const hideSelectors = [
-                        '.wx-root', '#js_pc_qr_code', '.qr_code_pc',
-                        '.rich_media_meta_list', '#js_tags_preview_toast',
-                        '.rich_media_tool', '.weui-desktop-popover'
-                    ];
-                    hideSelectors.forEach(selector => {
-                        document.querySelectorAll(selector).forEach(el => {
-                            el.style.display = 'none';
+                        const images = document.querySelectorAll('img');
+                        images.forEach(img => {
+                            img.style.maxWidth = '100%';
+                            img.style.height = 'auto';
                         });
-                    });
-                }
-            """)
+
+                        const hideSelectors = [
+                            '.wx-root', '#js_pc_qr_code', '.qr_code_pc',
+                            '.rich_media_meta_list', '#js_tags_preview_toast',
+                            '.rich_media_tool', '.weui-desktop-popover'
+                        ];
+                        hideSelectors.forEach(selector => {
+                            document.querySelectorAll(selector).forEach(el => {
+                                el.style.display = 'none';
+                            });
+                        });
+                    }
+                """)
+            else:
+                # Generic: hide site chrome, ensure images fit, improve print layout
+                await page.evaluate("""
+                    () => {
+                        const images = document.querySelectorAll('img');
+                        images.forEach(img => {
+                            img.style.maxWidth = '100%';
+                            img.style.height = 'auto';
+                        });
+
+                        const hideSelectors = [
+                            // Generic site chrome
+                            'header', 'nav', '.navbar', '.navigation', '.nav-bar', '.site-nav',
+                            '.site-header', '.header', '#header',
+                            '.sidebar', '.widget-area', '#sidebar',
+                            'footer', '.site-footer', '#footer',
+                            '.comments', '#comments', '.comment-section',
+                            '.share-buttons', '.social-share', '.sharing',
+                            '.cookie-notice', '.cookie-banner',
+                            '.popup', '.modal', '.overlay',
+                            '.ad', '.ads', '.advertisement',
+                            '.related-posts', '.recommended',
+                            // Substack
+                            '.subscribe-widget', '.subscription-widget-wrap',
+                            '.footer-wrap', '.post-ufi', '.paywall-title',
+                            '.pencraft.pc-display-none',
+                            // Medium
+                            '.metabar', '.postActions', '.js-postShareWidget',
+                            '[data-testid="headerSocialShare"]',
+                            '.pw-multi-vote-icon', '.speechify-ignore',
+                            '[aria-label="Member-only story"]'
+                        ];
+                        hideSelectors.forEach(selector => {
+                            document.querySelectorAll(selector).forEach(el => {
+                                el.style.display = 'none';
+                            });
+                        });
+
+                        // Improve print readability
+                        const style = document.createElement('style');
+                        style.textContent = `
+                            @media print {
+                                body { max-width: 100%; }
+                                img { max-width: 100%; height: auto; }
+                                pre, code { white-space: pre-wrap; word-break: break-all; }
+                            }
+                        `;
+                        document.head.appendChild(style);
+                    }
+                """)
 
             yield {"progress": 65, "message": "Generating PDF..."}
 
-            # Generate PDF with dynamic page size based on user's screen
-            pdf_bytes = await page.pdf(
-                width=page_size["width"],
-                height=page_size["height"],
-                print_background=True,
-                margin={"top": "5mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
-            )
+            if is_wechat:
+                # WeChat: viewport-based page size for mobile reading
+                pdf_bytes = await page.pdf(
+                    width=page_size["width"],
+                    height=page_size["height"],
+                    print_background=True,
+                    margin={"top": "5mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
+                )
+            else:
+                # Generic: standard A4 with comfortable margins
+                pdf_bytes = await page.pdf(
+                    format="A4",
+                    print_background=True,
+                    margin={"top": "15mm", "bottom": "15mm", "left": "15mm", "right": "15mm"}
+                )
 
             await browser.close()
 
@@ -273,27 +353,31 @@ class WebConverter:
 
     async def _scrape_page(self, url: str) -> tuple[str, str, bytes]:
         """
-        Scrape page using Playwright.
+        Scrape page using Playwright (legacy sync endpoint).
         Returns (html, title, pdf_bytes).
         """
-        async with async_playwright() as p:
-            # Use iPhone device emulation (WeChat blocks desktop browsers)
-            iphone = p.devices["iPhone 14 Pro"]
+        is_wechat = _is_wechat_url(url)
 
+        async with async_playwright() as p:
             browser = await p.chromium.launch()
-            context = await browser.new_context(
-                **iphone,
-                locale="zh-CN"
-            )
+
+            if is_wechat:
+                iphone = p.devices["iPhone 14 Pro"]
+                context = await browser.new_context(**iphone, locale="zh-CN")
+            else:
+                context = await browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    locale="en-US",
+                    device_scale_factor=1,
+                )
+
             page = await context.new_page()
 
-            # Use domcontentloaded instead of networkidle (faster, more reliable)
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-
-            # Wait for initial content to render
             await page.wait_for_timeout(2000)
 
-            # Scroll down to trigger lazy-loading of images
+            # Scroll to trigger lazy-loading
             await page.evaluate("""
                 async () => {
                     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -305,10 +389,8 @@ class WebConverter:
                 }
             """)
 
-            # Wait for images to load
             await page.wait_for_timeout(3000)
 
-            # Try to wait for all images to be loaded
             await page.evaluate("""
                 () => {
                     const images = document.querySelectorAll('img');
@@ -323,40 +405,60 @@ class WebConverter:
                 }
             """)
 
-            # Get page title
             title = await page.title()
             if not title:
                 title = "Untitled"
 
-            # Get HTML content
             html = await page.content()
 
-            # Use JavaScript to modify DOM for PDF output
-            # Keep WeChat's native font styling, only adjust images and hide UI elements
-            await page.evaluate("""
-                () => {
-                    // Make images fit the page width
-                    const images = document.querySelectorAll('img');
-                    images.forEach(img => {
-                        img.style.maxWidth = '100%';
-                        img.style.height = 'auto';
-                    });
-
-                    // Hide unnecessary UI elements
-                    const hideSelectors = [
-                        '.wx-root', '#js_pc_qr_code', '.qr_code_pc',
-                        '.rich_media_meta_list', '#js_tags_preview_toast',
-                        '.rich_media_tool', '.weui-desktop-popover'
-                    ];
-                    hideSelectors.forEach(selector => {
-                        document.querySelectorAll(selector).forEach(el => {
-                            el.style.display = 'none';
+            # DOM modifications depend on site type
+            if is_wechat:
+                await page.evaluate("""
+                    () => {
+                        const images = document.querySelectorAll('img');
+                        images.forEach(img => {
+                            img.style.maxWidth = '100%';
+                            img.style.height = 'auto';
                         });
-                    });
-                }
-            """)
+                        const hideSelectors = [
+                            '.wx-root', '#js_pc_qr_code', '.qr_code_pc',
+                            '.rich_media_meta_list', '#js_tags_preview_toast',
+                            '.rich_media_tool', '.weui-desktop-popover'
+                        ];
+                        hideSelectors.forEach(selector => {
+                            document.querySelectorAll(selector).forEach(el => {
+                                el.style.display = 'none';
+                            });
+                        });
+                    }
+                """)
+            else:
+                await page.evaluate("""
+                    () => {
+                        const images = document.querySelectorAll('img');
+                        images.forEach(img => {
+                            img.style.maxWidth = '100%';
+                            img.style.height = 'auto';
+                        });
+                        const hideSelectors = [
+                            'header', 'nav', '.navbar', '.navigation', '.site-header',
+                            '.sidebar', '.widget-area',
+                            'footer', '.site-footer',
+                            '.comments', '#comments',
+                            '.share-buttons', '.social-share',
+                            '.cookie-notice', '.ad', '.ads',
+                            '.subscribe-widget', '.subscription-widget-wrap',
+                            '.footer-wrap', '.post-ufi',
+                            '.metabar', '.postActions'
+                        ];
+                        hideSelectors.forEach(selector => {
+                            document.querySelectorAll(selector).forEach(el => {
+                                el.style.display = 'none';
+                            });
+                        });
+                    }
+                """)
 
-            # Generate PDF directly from Playwright (better quality)
             pdf_bytes = await page.pdf(
                 format="A4",
                 print_background=True,
@@ -368,28 +470,48 @@ class WebConverter:
         return html, title, pdf_bytes
 
     def _extract_content(self, html: str, url: str) -> dict:
-        """Extract article content from HTML."""
+        """Extract article content from HTML. Adapts selectors based on URL type."""
         soup = BeautifulSoup(html, "lxml")
+        is_wechat = _is_wechat_url(url)
 
         # Remove scripts, styles, and other non-content elements
         for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
             tag.decompose()
 
-        # Try to find article content (WeChat-specific selectors first)
-        content_selectors = [
-            {"id": "js_content"},  # WeChat article content
-            {"id": "js_article"},  # WeChat article wrapper
-            {"class_": "rich_media_content"},  # WeChat
-            {"tag": "article"},  # Standard article tag
-            {"class_": "article-content"},
-            {"class_": "post-content"},
-            {"class_": "entry-content"},
-        ]
+        if is_wechat:
+            content_selectors = [
+                {"id": "js_content"},
+                {"id": "js_article"},
+                {"class_": "rich_media_content"},
+                {"tag": "article"},
+            ]
+        else:
+            content_selectors = [
+                # Platform-specific selectors
+                {"class_": "available-content"},  # Substack
+                # Standard semantic selectors
+                {"tag": "article"},               # Medium, WordPress, most blogs
+                {"tag": "main"},
+                # Common CMS/framework classes
+                {"class_": "post-content"},
+                {"class_": "entry-content"},
+                {"class_": "article-content"},
+                {"class_": "content"},
+                {"class_": "post"},
+                {"class_": "prose"},              # Tailwind CSS
+                {"class_": "markdown"},           # Hugo, GitHub
+                {"class_": "single-content"},     # Hugo single pages
+                {"id": "content"},
+                {"id": "main-content"},
+                {"attrs": {"role": "main"}},
+            ]
 
         content_html = None
         for selector in content_selectors:
             if "tag" in selector:
                 element = soup.find(selector["tag"])
+            elif "attrs" in selector:
+                element = soup.find(attrs=selector["attrs"])
             else:
                 element = soup.find(**selector)
             if element:
@@ -401,16 +523,43 @@ class WebConverter:
             body = soup.find("body")
             content_html = str(body) if body else str(soup)
 
-        # Extract metadata
+        # Extract metadata — different strategies per site type
         author = None
-        author_elem = soup.find(id="js_name") or soup.find(class_="author")
-        if author_elem:
-            author = author_elem.get_text(strip=True)
-
         date = None
-        date_elem = soup.find(id="publish_time") or soup.find(class_="date")
-        if date_elem:
-            date = date_elem.get_text(strip=True)
+
+        if is_wechat:
+            author_elem = soup.find(id="js_name") or soup.find(class_="author")
+            if author_elem:
+                author = author_elem.get_text(strip=True)
+            date_elem = soup.find(id="publish_time") or soup.find(class_="date")
+            if date_elem:
+                date = date_elem.get_text(strip=True)
+        else:
+            # Try meta tags first (most reliable for generic sites)
+            meta_author = soup.find("meta", attrs={"name": "author"})
+            if meta_author:
+                author = meta_author.get("content", "").strip()
+            if not author:
+                author_elem = (soup.find(class_="author") or
+                               soup.find(attrs={"rel": "author"}) or
+                               soup.find(class_="byline"))
+                if author_elem:
+                    author = author_elem.get_text(strip=True)
+
+            # Try <time> tag, meta tags, then class-based selectors
+            time_elem = soup.find("time")
+            if time_elem:
+                date = time_elem.get("datetime") or time_elem.get_text(strip=True)
+            if not date:
+                meta_date = soup.find("meta", attrs={"property": "article:published_time"})
+                if meta_date:
+                    date = meta_date.get("content", "").strip()
+            if not date:
+                date_elem = (soup.find(class_="date") or
+                             soup.find(class_="published") or
+                             soup.find(class_="post-date"))
+                if date_elem:
+                    date = date_elem.get_text(strip=True)
 
         return {
             "html": content_html,
@@ -422,11 +571,13 @@ class WebConverter:
     def _generate_epub(self, title: str, content: dict, output_path: str, url: str):
         """Generate EPUB file from extracted content."""
         book = epub.EpubBook()
+        is_wechat = _is_wechat_url(url)
+        lang = "zh" if is_wechat else "en"
 
         # Set metadata
         book.set_identifier(f"readly-{hash(url)}")
         book.set_title(title)
-        book.set_language("zh")
+        book.set_language(lang)
         book.add_author(content["author"])
 
         # Add metadata
@@ -444,8 +595,14 @@ class WebConverter:
         chapter = epub.EpubHtml(
             title=title,
             file_name="article.xhtml",
-            lang="zh"
+            lang=lang
         )
+
+        # Use appropriate font stack based on content language
+        if is_wechat:
+            font_family = '"Noto Serif SC", "Noto Serif", serif'
+        else:
+            font_family = 'Georgia, "Times New Roman", serif'
 
         # Wrap content in proper HTML structure
         chapter_content = f"""
@@ -454,7 +611,7 @@ class WebConverter:
             <title>{title}</title>
             <style>
                 body {{
-                    font-family: "Noto Serif SC", "Noto Serif", serif;
+                    font-family: {font_family};
                     line-height: 1.8;
                     padding: 1em;
                     max-width: 800px;
@@ -497,10 +654,18 @@ class WebConverter:
         """Download images and prepare them for EPUB embedding."""
         soup = BeautifulSoup(html, "lxml")
         image_items = []
+        is_wechat = _is_wechat_url(base_url)
+
+        # Derive referer from the source URL's origin
+        parsed = urlparse(base_url)
+        referer = f"{parsed.scheme}://{parsed.hostname}/"
 
         for idx, img in enumerate(soup.find_all("img")):
-            # Get image URL (WeChat uses data-src for lazy loading)
-            img_url = img.get("data-src") or img.get("src")
+            # Get image URL — WeChat uses data-src for lazy loading
+            if is_wechat:
+                img_url = img.get("data-src") or img.get("src")
+            else:
+                img_url = img.get("src") or img.get("data-src")
             if not img_url:
                 continue
 
@@ -514,7 +679,7 @@ class WebConverter:
 
             try:
                 # Download image
-                img_data = self._download_image(img_url)
+                img_data = self._download_image(img_url, referer=referer)
                 if not img_data:
                     continue
 
@@ -556,13 +721,17 @@ class WebConverter:
 
         return str(soup), image_items
 
-    def _download_image(self, url: str) -> bytes | None:
-        """Download image from URL."""
+    def _download_image(self, url: str, referer: str = "") -> bytes | None:
+        """Download image from URL with appropriate referer."""
         try:
+            # Derive referer from image URL if not provided
+            if not referer:
+                parsed = urlparse(url)
+                referer = f"{parsed.scheme}://{parsed.hostname}/"
             headers = {
-                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
-                              "AppleWebKit/605.1.15 Safari/604.1",
-                "Referer": "https://mp.weixin.qq.com/"
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Referer": referer
             }
             with httpx.Client(timeout=30, follow_redirects=True) as client:
                 response = client.get(url, headers=headers)
