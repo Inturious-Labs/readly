@@ -197,7 +197,10 @@
     </style>
 </head>
 <body>
-    <h1>Readly Admin Dashboard <span style="font-size: 0.5em; padding: 4px 12px; border-radius: 4px; background: {{ '#f0ad4e' if env == 'development' else '#5cb85c' }}; color: white; vertical-align: middle;">{{ env | upper }}</span></h1>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="margin-bottom: 0;">Readly Admin Dashboard <span style="font-size: 0.5em; padding: 4px 12px; border-radius: 4px; background: {{ '#f0ad4e' if env == 'development' else '#5cb85c' }}; color: white; vertical-align: middle;">{{ env | upper }}</span></h1>
+        <a href="/admin/logout" style="color: #999; font-size: 13px; text-decoration: none;">Logout</a>
+    </div>
 
     <h2>Volume</h2>
     <div class="stats-grid three-col">

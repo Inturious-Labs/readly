@@ -3,21 +3,24 @@ Readly Backend API
 Converts webpage URLs to PDF and EPUB formats.
 """
 
+import hashlib
+import hmac
 import json
 import os
 import tempfile
 import uuid
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Cookie, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, HttpUrl
 
 from converter import WebConverter
 from database import (
     init_db, log_conversion, get_stats, get_recent, increment_download, get_conversion,
-    get_device_jobs, check_rate_limit, get_rate_limit_remaining, cleanup_old_jobs
+    get_device_jobs, check_rate_limit, get_rate_limit_remaining, cleanup_old_jobs,
+    get_engagement_stats, get_top_domains, get_daily_trend, get_error_breakdown
 )
 
 # Admin password from environment variable
@@ -297,18 +300,69 @@ def download_file(job_id: str, format: str):
     )
 
 
-def verify_admin_password(password: str):
-    """Verify the admin password."""
+def _make_admin_token() -> str:
+    """Create an HMAC token from the admin password for cookie auth."""
+    return hmac.new(ADMIN_PASSWORD.encode(), b"readly-admin", hashlib.sha256).hexdigest()
+
+
+def verify_admin(password: str = None, admin_token: str = None):
+    """Verify admin access via password or cookie token."""
+    if not ADMIN_PASSWORD:
+        raise HTTPException(status_code=500, detail="Admin password not configured")
+    if admin_token and hmac.compare_digest(admin_token, _make_admin_token()):
+        return
+    if password and password == ADMIN_PASSWORD:
+        return
+    raise HTTPException(status_code=401, detail="Invalid password")
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_login_page(admin_token: str = Cookie(None)):
+    """Show login form, or redirect to dashboard if already authenticated."""
+    if admin_token:
+        try:
+            verify_admin(admin_token=admin_token)
+            return RedirectResponse(url="/admin/dashboard", status_code=302)
+        except HTTPException:
+            pass
+
+    template = jinja_env.get_template("login.html")
+    return HTMLResponse(content=template.render(error=None))
+
+
+@app.post("/admin/login")
+def admin_login(password: str = Form(...)):
+    """Authenticate and set session cookie."""
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=500, detail="Admin password not configured")
     if password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Invalid password")
+        template = jinja_env.get_template("login.html")
+        return HTMLResponse(content=template.render(error="Invalid password"), status_code=401)
+
+    response = RedirectResponse(url="/admin/dashboard", status_code=302)
+    response.set_cookie(
+        key="admin_token",
+        value=_make_admin_token(),
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=86400 * 7,  # 7 days
+    )
+    return response
+
+
+@app.get("/admin/logout")
+def admin_logout():
+    """Clear admin session."""
+    response = RedirectResponse(url="/admin", status_code=302)
+    response.delete_cookie("admin_token")
+    return response
 
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
-def admin_dashboard(password: str = ""):
+def admin_dashboard(admin_token: str = Cookie(None)):
     """Admin dashboard with conversion statistics."""
-    verify_admin_password(password)
+    verify_admin(admin_token=admin_token)
 
     template = jinja_env.get_template("dashboard.html")
     html = template.render(
@@ -320,12 +374,16 @@ def admin_dashboard(password: str = ""):
 
 
 @app.get("/admin/stats")
-def admin_stats(password: str = ""):
-    """API endpoint for conversion statistics."""
-    verify_admin_password(password)
+def admin_stats(password: str = "", admin_token: str = Cookie(None)):
+    """API endpoint for conversion statistics and engagement metrics."""
+    verify_admin(password=password or None, admin_token=admin_token)
 
     return {
         "stats": get_stats(),
+        "engagement": get_engagement_stats(),
+        "top_domains": get_top_domains(),
+        "daily_trend": get_daily_trend(),
+        "error_breakdown": get_error_breakdown(),
         "recent": get_recent(limit=20)
     }
 

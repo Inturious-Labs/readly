@@ -246,6 +246,126 @@ def get_rate_limit_remaining(device_id: str, max_per_day: int = 50) -> int:
     return max(0, max_per_day - count)
 
 
+def get_engagement_stats() -> dict:
+    """Get user engagement metrics."""
+    conn = get_connection()
+
+    active_7d = conn.execute("""
+        SELECT COUNT(DISTINCT device_id) FROM conversions
+        WHERE device_id IS NOT NULL
+        AND created_at >= datetime('now', '-7 days')
+    """).fetchone()[0]
+
+    active_30d = conn.execute("""
+        SELECT COUNT(DISTINCT device_id) FROM conversions
+        WHERE device_id IS NOT NULL
+        AND created_at >= datetime('now', '-30 days')
+    """).fetchone()[0]
+
+    total_devices = conn.execute("""
+        SELECT COUNT(DISTINCT device_id) FROM conversions
+        WHERE device_id IS NOT NULL
+    """).fetchone()[0]
+
+    repeat_users = conn.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT device_id FROM conversions
+            WHERE device_id IS NOT NULL
+            GROUP BY device_id
+            HAVING COUNT(*) > 1
+        )
+    """).fetchone()[0]
+
+    retention_rate = round(repeat_users / total_devices * 100, 1) if total_devices > 0 else 0
+
+    avg_per_device = conn.execute("""
+        SELECT AVG(cnt) FROM (
+            SELECT COUNT(*) as cnt FROM conversions
+            WHERE device_id IS NOT NULL
+            GROUP BY device_id
+        )
+    """).fetchone()[0]
+
+    conn.close()
+
+    return {
+        "active_devices_7d": active_7d,
+        "active_devices_30d": active_30d,
+        "total_devices": total_devices,
+        "repeat_users": repeat_users,
+        "retention_rate": retention_rate,
+        "avg_conversions_per_device": round(avg_per_device, 1) if avg_per_device else 0,
+    }
+
+
+def get_top_domains(limit: int = 10) -> list:
+    """Get most converted domains."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT
+            CASE
+                WHEN url LIKE 'https://%' THEN
+                    SUBSTR(url, 9, INSTR(SUBSTR(url, 9), '/') - 1)
+                WHEN url LIKE 'http://%' THEN
+                    SUBSTR(url, 8, INSTR(SUBSTR(url, 8), '/') - 1)
+                ELSE url
+            END as domain,
+            COUNT(*) as count,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count
+        FROM conversions
+        WHERE url IS NOT NULL
+        GROUP BY domain
+        ORDER BY count DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def get_daily_trend(days: int = 30) -> list:
+    """Get daily conversion counts for the last N days."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT
+            DATE(created_at, '+8 hours') as date,
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+            COUNT(DISTINCT device_id) as unique_devices
+        FROM conversions
+        WHERE created_at >= datetime('now', ? || ' days')
+        GROUP BY DATE(created_at, '+8 hours')
+        ORDER BY date ASC
+    """, (f"-{days}",)).fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def get_error_breakdown() -> list:
+    """Get categorized error messages."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT
+            CASE
+                WHEN error_message LIKE '%timeout%' OR error_message LIKE '%Timeout%' THEN 'Timeout'
+                WHEN error_message LIKE '%rate%limit%' THEN 'Rate Limited'
+                WHEN error_message LIKE '%net::ERR%' OR error_message LIKE '%Connection%' THEN 'Network Error'
+                WHEN error_message LIKE '%navigation%' OR error_message LIKE '%goto%' THEN 'Page Load Failed'
+                ELSE 'Other'
+            END as error_category,
+            COUNT(*) as count
+        FROM conversions
+        WHERE status = 'failed' AND error_message IS NOT NULL
+        GROUP BY error_category
+        ORDER BY count DESC
+    """).fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
 def cleanup_old_jobs(days: int = 7) -> int:
     """Delete jobs and their files older than specified days. Returns count of deleted jobs."""
     conn = get_connection()
