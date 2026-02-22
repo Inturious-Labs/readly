@@ -367,6 +367,8 @@ def admin_dashboard(admin_token: str = Cookie(None)):
     template = jinja_env.get_template("dashboard.html")
     html = template.render(
         stats=get_stats(),
+        engagement=get_engagement_stats(),
+        daily_trend=get_daily_trend(),
         recent=get_recent(limit=50),
         env=ENVIRONMENT
     )
