@@ -23,8 +23,9 @@ from database import (
     get_engagement_stats, get_top_domains, get_daily_trend, get_error_breakdown
 )
 
-# Admin password from environment variable
+# Admin password and API key from environment variables
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 
 # Rate limit: max conversions per device per day
 RATE_LIMIT_PER_DAY = 50
@@ -301,10 +302,12 @@ def _make_admin_token() -> str:
     return hmac.new(ADMIN_PASSWORD.encode(), b"readly-admin", hashlib.sha256).hexdigest()
 
 
-def verify_admin(password: str = None, admin_token: str = None):
-    """Verify admin access via password or cookie token."""
+def verify_admin(password: str = None, admin_token: str = None, api_key: str = None):
+    """Verify admin access via password, cookie token, or API key header."""
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=500, detail="Admin password not configured")
+    if api_key and ADMIN_API_KEY and hmac.compare_digest(api_key, ADMIN_API_KEY):
+        return
     if admin_token and hmac.compare_digest(admin_token, _make_admin_token()):
         return
     if password and password == ADMIN_PASSWORD:
@@ -372,9 +375,10 @@ def admin_dashboard(admin_token: str = Cookie(None)):
 
 
 @app.get("/admin/stats")
-def admin_stats(password: str = "", admin_token: str = Cookie(None)):
+def admin_stats(request: Request, password: str = "", admin_token: str = Cookie(None)):
     """API endpoint for conversion statistics and engagement metrics."""
-    verify_admin(password=password or None, admin_token=admin_token)
+    api_key = request.headers.get("X-API-Key")
+    verify_admin(password=password or None, admin_token=admin_token, api_key=api_key)
 
     return {
         "stats": get_stats(),
