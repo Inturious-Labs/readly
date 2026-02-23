@@ -59,8 +59,59 @@ def init_db():
             conn.execute(f"ALTER TABLE conversions ADD COLUMN {column} {col_type}")
         except:
             pass
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY,
+            device_id TEXT,
+            response TEXT,
+            use_case TEXT,
+            conversions_today INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     conn.commit()
     conn.close()
+
+
+def save_feedback(device_id: str, response: str, use_case: str = None, conversions_today: int = None):
+    """Save user feedback."""
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO feedback (device_id, response, use_case, conversions_today)
+        VALUES (?, ?, ?, ?)
+    """, (device_id, response, use_case, conversions_today))
+    conn.commit()
+    conn.close()
+
+
+def get_feedback_summary() -> dict:
+    """Get feedback response counts."""
+    conn = get_connection()
+    total = conn.execute("SELECT COUNT(*) FROM feedback").fetchone()[0]
+    want_more = conn.execute("SELECT COUNT(*) FROM feedback WHERE response = 'want_more'").fetchone()[0]
+    enough = conn.execute("SELECT COUNT(*) FROM feedback WHERE response = 'enough'").fetchone()[0]
+    conn.close()
+
+    return {
+        "total": total,
+        "want_more": want_more,
+        "enough": enough,
+        "demand_rate": round(want_more / total * 100, 1) if total > 0 else 0,
+    }
+
+
+def get_recent_feedback(limit: int = 20) -> list:
+    """Get recent feedback entries."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT device_id, response, use_case, conversions_today,
+               datetime(created_at, '+8 hours') as created_at
+        FROM feedback
+        ORDER BY created_at DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def log_conversion(
@@ -220,31 +271,53 @@ def get_device_jobs(device_id: str, days: int = 7, limit: int = 50) -> list:
     return [dict(row) for row in rows]
 
 
-def check_rate_limit(device_id: str, max_per_day: int = 50) -> bool:
+def check_rate_limit(device_id: str, max_per_window: int = 10, window_minutes: int = 120) -> bool:
     """Check if device has exceeded rate limit. Returns True if within limit."""
     conn = get_connection()
-    # Count conversions in last 24 hours
     count = conn.execute("""
         SELECT COUNT(*) FROM conversions
         WHERE device_id = ?
-        AND created_at >= datetime('now', '-24 hours')
-    """, (device_id,)).fetchone()[0]
+        AND status = 'success'
+        AND created_at >= datetime('now', ? || ' minutes')
+    """, (device_id, f"-{window_minutes}")).fetchone()[0]
     conn.close()
 
-    return count < max_per_day
+    return count < max_per_window
 
 
-def get_rate_limit_remaining(device_id: str, max_per_day: int = 50) -> int:
-    """Get number of conversions remaining for device today."""
+def get_rate_limit_remaining(device_id: str, max_per_window: int = 10, window_minutes: int = 120) -> int:
+    """Get number of conversions remaining in current window."""
     conn = get_connection()
     count = conn.execute("""
         SELECT COUNT(*) FROM conversions
         WHERE device_id = ?
-        AND created_at >= datetime('now', '-24 hours')
-    """, (device_id,)).fetchone()[0]
+        AND status = 'success'
+        AND created_at >= datetime('now', ? || ' minutes')
+    """, (device_id, f"-{window_minutes}")).fetchone()[0]
     conn.close()
 
-    return max(0, max_per_day - count)
+    return max(0, max_per_window - count)
+
+
+def get_rate_limit_reset_time(device_id: str, window_minutes: int = 120) -> int:
+    """Get when the oldest conversion in the window expires (i.e. when a slot opens up)."""
+    conn = get_connection()
+    row = conn.execute("""
+        SELECT MIN(created_at) FROM conversions
+        WHERE device_id = ?
+        AND status = 'success'
+        AND created_at >= datetime('now', ? || ' minutes')
+    """, (device_id, f"-{window_minutes}")).fetchone()
+    conn.close()
+
+    if row and row[0]:
+        from datetime import datetime, timedelta
+        oldest = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+        reset_at = oldest + timedelta(minutes=window_minutes)
+        now = datetime.utcnow()
+        remaining_seconds = max(0, int((reset_at - now).total_seconds()))
+        return remaining_seconds
+    return 0
 
 
 def get_engagement_stats() -> dict:

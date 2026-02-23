@@ -318,6 +318,53 @@
         </div>
     </div>
 
+    <h2>Feedback (PMF Signals)</h2>
+    <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="stat-card">
+            <div class="label">Total Responses</div>
+            <div class="value">{{ feedback.total }}</div>
+        </div>
+        <div class="stat-card success">
+            <div class="label">Want More</div>
+            <div class="value">{{ feedback.want_more }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Enough</div>
+            <div class="value">{{ feedback.enough }}</div>
+        </div>
+        <div class="stat-card rate">
+            <div class="label">Demand Rate</div>
+            <div class="value">{{ feedback.demand_rate }}%</div>
+        </div>
+    </div>
+
+    {% if recent_feedback %}
+    <div class="table-container" style="margin-bottom: 20px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Response</th>
+                    <th>Use Case</th>
+                    <th>Conversions</th>
+                    <th>Device</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fb in recent_feedback %}
+                <tr>
+                    <td><span style="color: {{ '#22863a' if fb.response == 'want_more' else '#666' }}; font-weight: 600;">{{ fb.response }}</span></td>
+                    <td>{{ fb.use_case or '-' }}</td>
+                    <td>{{ fb.conversions_today or '-' }}</td>
+                    <td style="font-size: 11px; color: #999;">{{ fb.device_id[:8] }}...</td>
+                    <td class="timestamp">{{ fb.created_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
     <h2>Recent Conversions</h2>
     <div class="table-container">
         {% if recent %}

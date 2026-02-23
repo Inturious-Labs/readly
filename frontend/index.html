@@ -397,6 +397,90 @@
         .toast.show {
             opacity: 1;
         }
+
+        /* Feedback prompt */
+        .feedback-prompt {
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 16px;
+            border: 1px solid rgba(26, 58, 92, 0.1);
+        }
+        .feedback-prompt h3 {
+            font-size: 15px;
+            color: #1a3a5c;
+            margin-bottom: 8px;
+        }
+        .feedback-prompt p {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        .feedback-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .feedback-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: white;
+            color: #1a3a5c;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .feedback-btn:hover {
+            border-color: #1a3a5c;
+        }
+        .feedback-btn.selected {
+            border-color: #1a3a5c;
+            background: #1a3a5c;
+            color: white;
+        }
+        .feedback-usecase {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 10px;
+            font-family: inherit;
+        }
+        .feedback-usecase:focus {
+            outline: none;
+            border-color: #1a3a5c;
+        }
+        .feedback-submit {
+            width: 100%;
+            padding: 10px;
+            background: #1a3a5c;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .feedback-submit.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .feedback-submit:hover.active {
+            background: #2a4a6c;
+        }
+        .feedback-thanks {
+            text-align: center;
+            color: #22863a;
+            font-weight: 600;
+            font-size: 14px;
+            padding: 8px;
+        }
     </style>
 </head>
 <body>
@@ -419,6 +503,8 @@
             <div id="rateLimitInfo" class="rate-limit-info"></div>
         </form>
 
+        <div id="feedbackPrompt" style="display: none;"></div>
+
         <div id="jobList" class="job-list">
             <!-- Populated dynamically -->
         </div>
@@ -427,7 +513,7 @@
             <details>
                 <summary>What is Readly?</summary>
                 <p>Readly converts online articles into PDF and EPUB files, perfect for reading on Kindle, Kobo, or any e-reader. Just paste a URL and download your files.</p>
-                <p>Each device gets up to 50 free conversions per day. Files are available for 7 days after conversion.</p>
+                <p>Each device gets <span id="aboutLimit"></span> free conversions every <span id="aboutWindow"></span> minutes. Files are available for 7 days after conversion.</p>
             </details>
         </div>
 
@@ -490,7 +576,9 @@
 
         // State management
         const jobs = {}; // { tempId: { url, status, progress, message, title, pdfUrl, epubUrl, jobId, eventSource, createdAt } }
-        let rateLimit = { remaining: 50, max_per_day: 50 };
+        // Defaults overwritten by /jobs API on page load
+        let rateLimit = { remaining: 5, max_per_window: 5, window_minutes: 30, reset_seconds: 0, feedback_threshold_pct: 100 };
+        let resetTimer = null;
         const JOBS_PER_PAGE = 10;
         let visibleJobCount = JOBS_PER_PAGE;
 
@@ -508,17 +596,49 @@
             setTimeout(() => toast.classList.remove('show'), duration);
         }
 
+        function formatResetTime(seconds) {
+            if (seconds <= 0) return '';
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            if (mins < 60) return `${mins}:${secs.toString().padStart(2, '0')}`;
+            const hrs = Math.floor(mins / 60);
+            const remainMins = mins % 60;
+            return `${hrs}:${remainMins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function startResetCountdown() {
+            if (resetTimer) clearInterval(resetTimer);
+            if (rateLimit.reset_seconds <= 0) return;
+
+            let remaining = rateLimit.reset_seconds;
+            resetTimer = setInterval(() => {
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(resetTimer);
+                    resetTimer = null;
+                    refreshRateLimit(); // Refresh to get new rate limit
+                    return;
+                }
+                rateLimitInfo.textContent = `Rate limit reached. Resets in ${formatResetTime(remaining)}.`;
+            }, 1000);
+        }
+
         function updateRateLimitDisplay() {
+            if (!rateLimit.max_per_window) return; // Wait for API
             if (rateLimit.remaining <= 0) {
-                rateLimitInfo.textContent = `Daily limit reached (${rateLimit.max_per_day}/day). Try again tomorrow.`;
+                const resetStr = rateLimit.reset_seconds > 0
+                    ? `Resets in ${formatResetTime(rateLimit.reset_seconds)}.`
+                    : `Resets within ${formatResetTime(rateLimit.window_minutes * 60)}.`;
+                rateLimitInfo.textContent = `Rate limit reached. ${resetStr}`;
                 rateLimitInfo.className = 'rate-limit-info error';
                 submitBtn.disabled = true;
+                startResetCountdown();
             } else if (rateLimit.remaining <= 3) {
-                rateLimitInfo.textContent = `${rateLimit.remaining} conversion${rateLimit.remaining === 1 ? '' : 's'} remaining today`;
+                rateLimitInfo.textContent = `${rateLimit.remaining} conversion${rateLimit.remaining === 1 ? '' : 's'} remaining`;
                 rateLimitInfo.className = 'rate-limit-info warning';
                 submitBtn.disabled = false;
             } else {
-                rateLimitInfo.textContent = `${rateLimit.remaining} conversions remaining today`;
+                rateLimitInfo.textContent = `${rateLimit.remaining} of ${rateLimit.max_per_window} conversions remaining`;
                 rateLimitInfo.className = 'rate-limit-info';
                 submitBtn.disabled = false;
             }
@@ -563,7 +683,7 @@
 
             let html = `
                 <div class="job-list-header">
-                    <h2>Recent Conversions</h2>
+                    <h2>Last 7 Days</h2>
                     <span class="job-count">${jobArray.length} article${jobArray.length === 1 ? '' : 's'}</span>
                 </div>
             `;
@@ -651,6 +771,26 @@
             return div.innerHTML;
         }
 
+        function updateAboutLimits() {
+            const el1 = document.getElementById('aboutLimit');
+            const el2 = document.getElementById('aboutWindow');
+            if (el1) el1.textContent = rateLimit.max_per_window;
+            if (el2) el2.textContent = rateLimit.window_minutes;
+        }
+
+        async function refreshRateLimit() {
+            try {
+                const response = await fetch(`${API_URL}/jobs?device_id=${deviceId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    rateLimit = data.rate_limit;
+                    updateRateLimitDisplay();
+                    updateAboutLimits();
+                    checkFeedbackPrompt();
+                }
+            } catch (e) {}
+        }
+
         async function loadExistingJobs() {
             try {
                 const response = await fetch(`${API_URL}/jobs?device_id=${deviceId}`);
@@ -660,6 +800,7 @@
                     // Update rate limit
                     rateLimit = data.rate_limit;
                     updateRateLimitDisplay();
+                    updateAboutLimits();
 
                     // Load jobs
                     for (const job of data.jobs) {
@@ -679,6 +820,7 @@
                     }
 
                     renderJobList();
+                    checkFeedbackPrompt();
                 }
             } catch (error) {
                 console.error('Failed to load existing jobs:', error);
@@ -702,10 +844,6 @@
 
             renderJobList();
 
-            // Decrement local rate limit
-            rateLimit.remaining = Math.max(0, rateLimit.remaining - 1);
-            updateRateLimitDisplay();
-
             // Start SSE connection
             const eventSource = new EventSource(
                 `${API_URL}/convert/stream?url=${encodeURIComponent(url)}&viewport_width=${viewportWidth}&viewport_height=${viewportHeight}&device_id=${deviceId}`
@@ -721,6 +859,7 @@
                     jobs[tempId].status = 'error';
                     jobs[tempId].message = data.message;
                     renderJobList();
+                    refreshRateLimit();
                     showToast('Rate limit exceeded');
                     return;
                 }
@@ -730,6 +869,7 @@
                     jobs[tempId].status = 'error';
                     jobs[tempId].message = data.message;
                     renderJobList();
+                    refreshRateLimit();
                     showToast('Conversion failed');
                     return;
                 }
@@ -746,6 +886,7 @@
                     jobs[tempId].pdfUrl = data.pdf_url;
                     jobs[tempId].epubUrl = data.epub_url;
                     showToast('Conversion complete!');
+                    refreshRateLimit();
                 }
 
                 renderJobList();
@@ -756,6 +897,7 @@
                 jobs[tempId].status = 'error';
                 jobs[tempId].message = 'Connection failed. Please try again.';
                 renderJobList();
+                refreshRateLimit();
                 showToast('Connection failed');
             };
         }
@@ -767,7 +909,7 @@
             if (!url) return;
 
             if (rateLimit.remaining <= 0) {
-                showToast('Daily limit reached');
+                showToast('Rate limit reached — resets soon');
                 return;
             }
 
@@ -775,6 +917,92 @@
             urlInput.value = '';
             urlInput.focus();
         });
+
+        // Feedback prompt logic
+        function checkFeedbackPrompt() {
+            const threshold = rateLimit.feedback_threshold_pct || 80;
+            const maxPerWindow = rateLimit.max_per_window || 10;
+            const used = maxPerWindow - rateLimit.remaining;
+            const usagePct = (used / maxPerWindow) * 100;
+
+            if (usagePct < threshold) return;
+
+            // Deduplicate: only allow one feedback per rate limit window
+            const lastSubmitted = localStorage.getItem('readly_feedback_ts');
+            const windowMs = (rateLimit.window_minutes || 60) * 60000;
+            if (lastSubmitted) {
+                const msSince = Date.now() - parseInt(lastSubmitted);
+                if (msSince < windowMs) {
+                    // Already submitted recently — show static thank you
+                    const el = document.getElementById('feedbackPrompt');
+                    const response = localStorage.getItem('readly_feedback_response');
+                    const msg = response === 'want_more'
+                        ? "You told us you want more — we're working on it!"
+                        : "Thanks for your feedback!";
+                    el.innerHTML = `<div class="feedback-prompt"><div class="feedback-thanks">${msg}</div></div>`;
+                    el.style.display = 'block';
+                    return;
+                }
+            }
+
+            showFeedbackPrompt(used, maxPerWindow);
+        }
+
+        function showFeedbackPrompt(used, maxPerWindow) {
+            const el = document.getElementById('feedbackPrompt');
+
+            el.innerHTML = `
+                <div class="feedback-prompt">
+                    <h3>You can convert up to ${maxPerWindow} articles every ${rateLimit.window_minutes} minutes</h3>
+                    <p>Would you want more?</p>
+                    <div class="feedback-buttons">
+                        <button class="feedback-btn" data-response="want_more" onclick="selectFeedback(this)">Yes, I need more!</button>
+                        <button class="feedback-btn" data-response="enough" onclick="selectFeedback(this)">No, this is enough</button>
+                    </div>
+                    <input type="text" class="feedback-usecase" id="feedbackUseCase" placeholder="What are you using Readly for? (optional)">
+                    <button class="feedback-submit" id="feedbackSubmitBtn" onclick="submitFeedbackForm()">Submit</button>
+                </div>
+            `;
+            el.style.display = 'block';
+        }
+
+        function selectFeedback(btn) {
+            document.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            document.getElementById('feedbackSubmitBtn').classList.add('active');
+        }
+
+        async function submitFeedbackForm() {
+            const selected = document.querySelector('.feedback-btn.selected');
+            if (!selected) return;
+
+            const response = selected.dataset.response;
+            const useCase = document.getElementById('feedbackUseCase').value.trim();
+            const maxPerWindow = rateLimit.max_per_window || 10;
+            const used = maxPerWindow - rateLimit.remaining;
+
+            try {
+                await fetch(`${API_URL}/feedback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        device_id: deviceId,
+                        response: response,
+                        use_case: useCase || null,
+                        conversions_today: used
+                    })
+                });
+            } catch (e) {
+                // Silent fail — don't block user
+            }
+
+            // Mark submission time and save response type
+            localStorage.setItem('readly_feedback_ts', Date.now().toString());
+            localStorage.setItem('readly_feedback_response', response);
+
+            // Show persistent thank you
+            checkFeedbackPrompt();
+        }
 
         // Load existing jobs on page load
         loadExistingJobs();

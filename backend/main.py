@@ -19,16 +19,21 @@ from pydantic import BaseModel, HttpUrl
 from converter import WebConverter
 from database import (
     init_db, log_conversion, get_stats, get_recent, increment_download, get_conversion,
-    get_device_jobs, check_rate_limit, get_rate_limit_remaining,
-    get_engagement_stats, get_top_domains, get_daily_trend, get_error_breakdown
+    get_device_jobs, check_rate_limit, get_rate_limit_remaining, get_rate_limit_reset_time,
+    get_engagement_stats, get_top_domains, get_daily_trend, get_error_breakdown,
+    save_feedback, get_feedback_summary, get_recent_feedback
 )
 
 # Admin password and API key from environment variables
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 
-# Rate limit: max conversions per device per day
-RATE_LIMIT_PER_DAY = 50
+# Rate limit: max conversions per device per window
+RATE_LIMIT_MAX = int(os.environ.get("RATE_LIMIT_MAX", "5"))
+RATE_LIMIT_WINDOW_MINUTES = int(os.environ.get("RATE_LIMIT_WINDOW_MINUTES", "30"))
+
+# Feedback prompt threshold: show when usage >= this percentage of window limit
+FEEDBACK_THRESHOLD_PCT = int(os.environ.get("FEEDBACK_THRESHOLD_PCT", "100"))
 
 # Environment indicator (development or production)
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
@@ -123,13 +128,16 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
         device_id: Device fingerprint for tracking and rate limiting
     """
     # Check rate limit if device_id provided
-    if device_id and not check_rate_limit(device_id, RATE_LIMIT_PER_DAY):
+    if device_id and not check_rate_limit(device_id, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MINUTES):
+        reset_seconds = get_rate_limit_reset_time(device_id, RATE_LIMIT_WINDOW_MINUTES)
+        reset_min = max(1, reset_seconds // 60)
         async def rate_limit_error():
             error_data = json.dumps({
                 "progress": 0,
-                "message": f"Rate limit exceeded. Maximum {RATE_LIMIT_PER_DAY} conversions per day.",
+                "message": f"Rate limit reached. Resets in {reset_min} minutes.",
                 "error": True,
-                "rate_limited": True
+                "rate_limited": True,
+                "reset_seconds": reset_seconds
             })
             yield f"data: {error_data}\n\n"
         return StreamingResponse(
@@ -244,7 +252,8 @@ def get_jobs(device_id: str):
         raise HTTPException(status_code=400, detail="device_id is required")
 
     jobs = get_device_jobs(device_id)
-    remaining = get_rate_limit_remaining(device_id, RATE_LIMIT_PER_DAY)
+    remaining = get_rate_limit_remaining(device_id, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MINUTES)
+    reset_seconds = get_rate_limit_reset_time(device_id, RATE_LIMIT_WINDOW_MINUTES) if remaining == 0 else 0
 
     # Transform jobs to include download URLs
     for job in jobs:
@@ -258,9 +267,28 @@ def get_jobs(device_id: str):
         "jobs": jobs,
         "rate_limit": {
             "remaining": remaining,
-            "max_per_day": RATE_LIMIT_PER_DAY
+            "max_per_window": RATE_LIMIT_MAX,
+            "window_minutes": RATE_LIMIT_WINDOW_MINUTES,
+            "reset_seconds": reset_seconds,
+            "feedback_threshold_pct": FEEDBACK_THRESHOLD_PCT
         }
     }
+
+
+class FeedbackRequest(BaseModel):
+    device_id: str
+    response: str  # "want_more" or "enough"
+    use_case: str = None
+    conversions_today: int = None
+
+
+@app.post("/feedback")
+def submit_feedback(req: FeedbackRequest):
+    """Submit user feedback about rate limits."""
+    if req.response not in ("want_more", "enough"):
+        raise HTTPException(status_code=400, detail="response must be 'want_more' or 'enough'")
+    save_feedback(req.device_id, req.response, req.use_case, req.conversions_today)
+    return {"status": "ok"}
 
 
 @app.get("/download/{job_id}/{format}")
@@ -368,6 +396,8 @@ def admin_dashboard(admin_token: str = Cookie(None)):
         stats=get_stats(),
         engagement=get_engagement_stats(),
         daily_trend=get_daily_trend(),
+        feedback=get_feedback_summary(),
+        recent_feedback=get_recent_feedback(limit=20),
         recent=get_recent(limit=50),
         env=ENVIRONMENT
     )
@@ -386,6 +416,7 @@ def admin_stats(request: Request, password: str = "", admin_token: str = Cookie(
         "top_domains": get_top_domains(),
         "daily_trend": get_daily_trend(),
         "error_breakdown": get_error_breakdown(),
+        "feedback": get_feedback_summary(),
         "recent": get_recent(limit=20)
     }
 
