@@ -131,10 +131,14 @@ class WebConverter:
                 viewport_height = int(viewport_width * aspect_ratio)
             page_size = self._calculate_page_size(viewport_width, viewport_height)
         else:
-            # Generic: A4 page, desktop viewport
-            page_size = {"width": "210mm", "height": "297mm"}
-            viewport_width = 1280
-            viewport_height = 800
+            # Generic: viewport-based page size for readable PDF
+            if viewport_width > viewport_height:
+                viewport_width, viewport_height = viewport_height, viewport_width
+            aspect_ratio = viewport_height / viewport_width
+            if aspect_ratio < 1.3:
+                aspect_ratio = 19.5 / 9
+                viewport_height = int(viewport_width * aspect_ratio)
+            page_size = self._calculate_page_size(viewport_width, viewport_height)
 
         yield {"progress": 5, "message": "Starting conversion..."}
 
@@ -308,11 +312,12 @@ class WebConverter:
                     margin={"top": "5mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
                 )
             else:
-                # Generic: standard A4 with comfortable margins
+                # Generic: viewport-based page size with comfortable margins
                 pdf_bytes = await page.pdf(
-                    format="A4",
+                    width=page_size["width"],
+                    height=page_size["height"],
                     print_background=True,
-                    margin={"top": "15mm", "bottom": "15mm", "left": "15mm", "right": "15mm"}
+                    margin={"top": "5mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
                 )
 
             await browser.close()
