@@ -641,9 +641,6 @@
             applyLang();
         }
 
-        // Apply language immediately for static elements
-        applyLang();
-
         // Device fingerprint generation
         function hashCode(str) {
             let hash = 0;
@@ -1108,7 +1105,8 @@
             checkFeedbackPrompt();
         }
 
-        // Load existing jobs on page load
+        // Apply language and load existing jobs on page load
+        applyLang();
         loadExistingJobs();
     </script>
 </body>
