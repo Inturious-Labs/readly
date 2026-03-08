@@ -1,0 +1,24 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key clayton@${{ secrets.DEPLOY_HOST }} \
+            'cd ~/readly && git pull origin main && sudo /usr/bin/systemctl restart readly'
+
+      - name: Health check
+        run: |
+          sleep 3
+          curl -sf https://api.readly.space/health || echo "Health check failed"
