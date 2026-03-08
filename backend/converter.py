@@ -281,7 +281,21 @@ class WebConverter:
                             '.metabar', '.postActions', '.js-postShareWidget',
                             '[data-testid="headerSocialShare"]',
                             '.pw-multi-vote-icon', '.speechify-ignore',
-                            '[aria-label="Member-only story"]'
+                            '[aria-label="Member-only story"]',
+                            // X / Twitter
+                            '[data-testid="TopNavBar"]',
+                            '[data-testid="BottomBar"]',
+                            '[data-testid="twitter-logged-out-nav"]',
+                            '[data-testid="reply"]',
+                            '[data-testid="retweet"]',
+                            '[data-testid="like"]',
+                            '[data-testid="bookmark"]',
+                            '[data-testid="caret"]',
+                            '[data-testid="User-Name"]',
+                            '[data-testid="Tweet-User-Avatar"]',
+                            '[data-testid="logged_out_read_replies_pivot"]',
+                            '[data-testid="google_sign_in_container"]',
+                            '[role="group"]'
                         ];
                         hideSelectors.forEach(selector => {
                             document.querySelectorAll(selector).forEach(el => {
@@ -461,7 +475,21 @@ class WebConverter:
                             '.cookie-notice', '.ad', '.ads',
                             '.subscribe-widget', '.subscription-widget-wrap',
                             '.footer-wrap', '.post-ufi',
-                            '.metabar', '.postActions'
+                            '.metabar', '.postActions',
+                            // X / Twitter
+                            '[data-testid="TopNavBar"]',
+                            '[data-testid="BottomBar"]',
+                            '[data-testid="twitter-logged-out-nav"]',
+                            '[data-testid="reply"]',
+                            '[data-testid="retweet"]',
+                            '[data-testid="like"]',
+                            '[data-testid="bookmark"]',
+                            '[data-testid="caret"]',
+                            '[data-testid="User-Name"]',
+                            '[data-testid="Tweet-User-Avatar"]',
+                            '[data-testid="logged_out_read_replies_pivot"]',
+                            '[data-testid="google_sign_in_container"]',
+                            '[role="group"]'
                         ];
                         hideSelectors.forEach(selector => {
                             document.querySelectorAll(selector).forEach(el => {
