@@ -215,6 +215,12 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            text-decoration: none;
+        }
+
+        .job-url:hover {
+            color: #1a3a5c;
+            text-decoration: underline;
         }
 
         .job-time {
@@ -296,6 +302,28 @@
         .download-btn:hover {
             transform: translateY(-1px);
             opacity: 0.9;
+        }
+
+        .retry-btn {
+            display: inline-block;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #e74c3c;
+            background: transparent;
+            border: 1.5px solid #e74c3c;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: auto;
+            margin-top: 8px;
+        }
+
+        .retry-btn:hover {
+            background: #e74c3c;
+            color: white;
+            transform: none;
+            box-shadow: none;
         }
 
         .empty-state {
@@ -608,7 +636,7 @@
             hostname.startsWith('172.31.') ||
             window.location.protocol === 'file:'
         );
-        const API_URL = IS_LOCAL
+        let API_URL = IS_LOCAL
             ? 'https://dev-api.readly.space'   // Local/LAN testing uses dev backend
             : 'https://api.readly.space';       // Production uses prod backend
 
@@ -808,7 +836,7 @@
                             <div class="job-info">
                                 <div class="job-title">${escapeHtml(title)}</div>
                                 <div class="job-url-row">
-                                    <span class="job-url">${escapeHtml(displayUrl)}</span>
+                                    <a class="job-url" href="${escapeHtml(job.url)}" target="_blank" rel="noopener" title="${escapeHtml(job.url)}">${escapeHtml(displayUrl)}</a>
                                     ${timeAgo ? `<span class="job-time">${timeAgo}</span>` : ''}
                                 </div>
                             </div>
@@ -841,7 +869,9 @@
                 }
 
                 if (isError) {
-                    html += `<div class="job-error">${escapeHtml(job.message || t('conversion_failed'))}</div>`;
+                    html += `<div class="job-error">${escapeHtml(job.message || t('conversion_failed'))}
+                        <button class="retry-btn" data-retry-url="${encodeURIComponent(job.url)}" onclick="retryConversion(decodeURIComponent(this.dataset.retryUrl))">${t('retry')}</button>
+                    </div>`;
                 }
 
                 html += '</div>';
@@ -1000,6 +1030,14 @@
                 refreshRateLimit();
                 showToast(t('connection_failed'));
             };
+        }
+
+        function retryConversion(url) {
+            if (rateLimit.remaining <= 0) {
+                showToast(t('rate_limit_toast'));
+                return;
+            }
+            startConversion(url);
         }
 
         form.addEventListener('submit', (e) => {
