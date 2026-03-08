@@ -46,6 +46,7 @@ const i18n = {
         conversion_complete: '转换完成！',
         connection_failed: '连接失败',
         connection_failed_retry: '连接失败，请重试。',
+        retry: '重试',
         show_more: '显示更多',
 
         // Feedback
@@ -108,6 +109,7 @@ const i18n = {
         conversion_complete: 'Conversion complete!',
         connection_failed: 'Connection failed',
         connection_failed_retry: 'Connection failed. Please try again.',
+        retry: 'Retry',
         show_more: 'Show more',
 
         // Feedback

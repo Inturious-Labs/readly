@@ -67,6 +67,27 @@ TEMP_DIR = tempfile.gettempdir()
 conversions = {}  # job_id -> {pdf_path, epub_path, title}
 
 
+def _friendly_error(raw: str) -> str:
+    """Convert raw Playwright/system errors to user-friendly messages."""
+    msg = str(raw)
+    if "ERR_NAME_NOT_RESOLVED" in msg:
+        return "Could not reach this website. Please check the URL."
+    if "ERR_CONNECTION_REFUSED" in msg:
+        return "The website refused the connection. It may be down."
+    if "ERR_CONNECTION_TIMED_OUT" in msg or "Timeout" in msg:
+        return "The page took too long to load. Please try again."
+    if "ERR_SSL" in msg or "ERR_CERT" in msg:
+        return "This website has a security certificate issue."
+    if "ERR_TOO_MANY_REDIRECTS" in msg:
+        return "This page has too many redirects."
+    if "net::" in msg:
+        return "Could not load this page. Please check the URL and try again."
+    # Truncate overly long messages
+    if len(msg) > 120:
+        return "Conversion failed. Please try again or try a different URL."
+    return msg
+
+
 class ConvertRequest(BaseModel):
     url: HttpUrl
 
@@ -214,7 +235,7 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
                 yield f"data: {final_data}\n\n"
 
         except Exception as e:
-            # Log failed conversion to database
+            # Log failed conversion to database (raw error for debugging)
             job_id = str(uuid.uuid4())[:8]
             log_conversion(
                 job_id=job_id,
@@ -228,7 +249,7 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
 
             error_data = json.dumps({
                 "progress": 0,
-                "message": str(e),
+                "message": _friendly_error(e),
                 "error": True
             })
             yield f"data: {error_data}\n\n"

@@ -142,7 +142,8 @@ class WebConverter:
 
         yield {"progress": 5, "message": "Starting conversion..."}
 
-        async with async_playwright() as p:
+        p = await async_playwright().start()
+        try:
             browser = await p.chromium.launch()
 
             if is_wechat:
@@ -321,6 +322,11 @@ class WebConverter:
                 )
 
             await browser.close()
+        finally:
+            try:
+                await p.stop()
+            except Exception:
+                pass  # Suppress Playwright transport InvalidStateError on cleanup
 
         yield {"progress": 75, "message": "Processing content..."}
 
@@ -363,7 +369,8 @@ class WebConverter:
         """
         is_wechat = _is_wechat_url(url)
 
-        async with async_playwright() as p:
+        p = await async_playwright().start()
+        try:
             browser = await p.chromium.launch()
 
             if is_wechat:
@@ -471,6 +478,11 @@ class WebConverter:
             )
 
             await browser.close()
+        finally:
+            try:
+                await p.stop()
+            except Exception:
+                pass  # Suppress Playwright transport InvalidStateError on cleanup
 
         return html, title, pdf_bytes
 
