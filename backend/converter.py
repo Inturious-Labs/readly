@@ -295,12 +295,30 @@ class WebConverter:
                             '[data-testid="Tweet-User-Avatar"]',
                             '[data-testid="logged_out_read_replies_pivot"]',
                             '[data-testid="google_sign_in_container"]',
+                            '[data-testid="pillLabel"]',
+                            '[data-testid="app-text-transition-container"]',
                             '[role="group"]'
                         ];
                         hideSelectors.forEach(selector => {
                             document.querySelectorAll(selector).forEach(el => {
                                 el.style.display = 'none';
                             });
+                        });
+
+                        // Hide X/Twitter premium upsell and timestamp/views sections
+                        document.querySelectorAll('a[href*="premium"]').forEach(el => {
+                            // Walk up to find the upsell container
+                            let parent = el.closest('[data-testid]') || el.parentElement?.parentElement?.parentElement;
+                            if (parent) parent.style.display = 'none';
+                        });
+                        // Hide timestamp row (contains time element and view count)
+                        document.querySelectorAll('time').forEach(el => {
+                            let row = el.closest('div[class]');
+                            if (row) {
+                                // Walk up to the row-level container that holds time + views
+                                let container = row.parentElement;
+                                if (container) container.style.display = 'none';
+                            }
                         });
 
                         // Improve print readability
