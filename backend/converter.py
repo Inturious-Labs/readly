@@ -790,11 +790,19 @@ class WebConverter:
         return None
 
     def _safe_filename(self, title: str) -> str:
-        """Convert title to safe filename."""
+        """Convert title to safe filename.
+
+        Truncates by byte length (not character count) to stay under the
+        255-byte Linux filename limit. Leaves room for timestamp suffix
+        and extension (e.g. '_20260329_223621.epub' = 25 bytes).
+        """
         # Remove or replace unsafe characters
-        safe = re.sub(r'[<>:"/\\|?*]', "", title)
+        safe = re.sub(r'[<>:"/\\|?*\n\r]', "", title)
         safe = safe.strip()
-        # Limit length
-        if len(safe) > 100:
-            safe = safe[:100]
+        # Truncate to fit within 255-byte filename limit
+        # Reserve 30 bytes for timestamp suffix + extension
+        max_bytes = 220
+        encoded = safe.encode("utf-8")
+        if len(encoded) > max_bytes:
+            safe = encoded[:max_bytes].decode("utf-8", errors="ignore").rstrip()
         return safe or "article"
