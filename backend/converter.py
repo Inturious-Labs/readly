@@ -338,6 +338,8 @@ class WebConverter:
                     margin={"top": "5mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
                 )
 
+            await page.close()
+            await context.close()
             await browser.close()
         finally:
             try:
@@ -508,6 +510,8 @@ class WebConverter:
                 margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"}
             )
 
+            await page.close()
+            await context.close()
             await browser.close()
         finally:
             try:

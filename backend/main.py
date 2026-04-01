@@ -9,6 +9,8 @@ import hmac
 import json
 import os
 import tempfile
+import time
+import urllib.parse
 import uuid
 from pathlib import Path
 from fastapi import Cookie, FastAPI, Form, HTTPException, Request
@@ -65,7 +67,22 @@ app.add_middleware(
 
 # Store converted files temporarily
 TEMP_DIR = tempfile.gettempdir()
-conversions = {}  # job_id -> {pdf_path, epub_path, title}
+conversions = {}  # job_id -> {pdf_path, epub_path, title, created_at}
+MAX_CACHE_SIZE = 200  # Evict oldest entries beyond this
+
+
+def _cache_conversion(job_id: str, pdf_path: str, epub_path: str, title: str):
+    """Store conversion in memory cache, evicting oldest entries if over limit."""
+    conversions[job_id] = {
+        "pdf_path": pdf_path,
+        "epub_path": epub_path,
+        "title": title,
+        "created_at": time.time(),
+    }
+    if len(conversions) > MAX_CACHE_SIZE:
+        oldest = sorted(conversions, key=lambda k: conversions[k].get("created_at", 0))
+        for k in oldest[:len(conversions) - MAX_CACHE_SIZE]:
+            del conversions[k]
 
 
 def _friendly_error(raw: str) -> str:
@@ -120,11 +137,7 @@ async def convert_url(request: ConvertRequest):
 
         # Generate job ID and store file paths
         job_id = str(uuid.uuid4())[:8]
-        conversions[job_id] = {
-            "pdf_path": result["pdf_path"],
-            "epub_path": result["epub_path"],
-            "title": result["title"]
-        }
+        _cache_conversion(job_id, result["pdf_path"], result["epub_path"], result["title"])
 
         return ConvertResponse(
             job_id=job_id,
@@ -192,11 +205,7 @@ async def convert_url_stream(url: str, viewport_width: int = 430, viewport_heigh
             # Generate job ID and store file paths
             if result:
                 job_id = str(uuid.uuid4())[:8]
-                conversions[job_id] = {
-                    "pdf_path": result["pdf_path"],
-                    "epub_path": result["epub_path"],
-                    "title": result["title"]
-                }
+                _cache_conversion(job_id, result["pdf_path"], result["epub_path"], result["title"])
 
                 # Get file sizes
                 pdf_size = os.path.getsize(result["pdf_path"]) if os.path.exists(result["pdf_path"]) else None
@@ -326,11 +335,11 @@ def download_file(job_id: str, format: str):
     if format == "pdf":
         path = job["pdf_path"]
         media_type = "application/pdf"
-        filename = f"{job['title']}.pdf"
+        ext = "pdf"
     elif format == "epub":
         path = job["epub_path"]
         media_type = "application/epub+zip"
-        filename = f"{job['title']}.epub"
+        ext = "epub"
     else:
         raise HTTPException(status_code=400, detail="Format must be 'pdf' or 'epub'")
 
@@ -340,10 +349,18 @@ def download_file(job_id: str, format: str):
     # Track download count
     increment_download(job_id, format)
 
+    # Build Content-Disposition with ASCII fallback for iOS Chrome compatibility
+    utf8_filename = urllib.parse.quote(f"{job['title']}.{ext}")
+    ascii_fallback = f"download.{ext}"
+    content_disposition = (
+        f'attachment; filename="{ascii_fallback}"; '
+        f"filename*=utf-8''{utf8_filename}"
+    )
+
     return FileResponse(
         path=path,
         media_type=media_type,
-        filename=filename
+        headers={"Content-Disposition": content_disposition},
     )
 
 

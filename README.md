@@ -25,16 +25,19 @@ Frontend (Vercel/Cloudflare)     Backend (VPS)
 ## Tech Stack
 
 **Frontend:**
+
 - Static HTML/CSS/JS
 - Hosted on Vercel or Cloudflare Pages
 
 **Backend:**
+
 - Python + FastAPI
 - Playwright (headless browser for WeChat scraping)
 - ebooklib (EPUB generation)
 - Hosted on any VPS (Linode, DigitalOcean, etc.)
 
 **Payments:**
+
 - Stripe + Alipay
 
 ## Local Development
